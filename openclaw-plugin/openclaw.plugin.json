@@ -1,6 +1,6 @@
 {
-  "id": "knowledge-prism",
-  "name": "Knowledge Prism",
+  "id": "js-knowledge-prism",
+  "name": "JS Knowledge Prism",
   "description": "金字塔原理知识蒸馏工具 — 从 journal 笔记自动提取 atoms、归组 groups、收敛 synthesis",
   "version": "1.0.0",
   "configSchema": {

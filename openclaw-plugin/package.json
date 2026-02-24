@@ -1,8 +1,11 @@
 {
-  "name": "openclaw-plugin-knowledge-prism",
+  "name": "js-knowledge-prism",
   "version": "1.0.0",
   "description": "OpenClaw plugin for Knowledge Prism — pyramid-principle knowledge distillation",
   "type": "module",
   "main": "index.mjs",
-  "license": "MIT"
+  "license": "MIT",
+  "openclaw": {
+    "extensions": ["./index.mjs"]
+  }
 }
