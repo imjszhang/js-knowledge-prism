@@ -1,5 +1,53 @@
+import { createRequire } from "node:module";
 import { createHttpCaller, runPipeline } from "../lib/process.mjs";
 import { getStatus } from "../lib/status.mjs";
+
+/**
+ * Patch child_process.spawn / execFile to default windowsHide: true on Windows.
+ *
+ * OpenClaw's runCommandWithTimeout (src/process/exec.ts) spawns git, npm, etc.
+ * without windowsHide, causing visible CMD windows on every call.
+ * We patch the shared CJS module object so that all callers—including those
+ * that imported spawn via ESM live bindings—pick up the default.
+ */
+function patchWindowsHide() {
+  if (process.platform !== "win32") return;
+  try {
+    const require = createRequire(import.meta.url);
+    const cp = require("node:child_process");
+
+    const _spawn = cp.spawn;
+    cp.spawn = function patchedSpawn(cmd, args, opts) {
+      if (args && typeof args === "object" && !Array.isArray(args)) {
+        if (args.windowsHide === undefined) args.windowsHide = true;
+        return _spawn.call(this, cmd, args);
+      }
+      if (!opts || typeof opts !== "object") opts = {};
+      if (opts.windowsHide === undefined) opts.windowsHide = true;
+      return _spawn.call(this, cmd, args, opts);
+    };
+
+    const _execFile = cp.execFile;
+    cp.execFile = function patchedExecFile(file, args, opts, cb) {
+      if (typeof args === "function") return _execFile.call(this, file, args);
+      if (typeof opts === "function") {
+        if (Array.isArray(args)) return _execFile.call(this, file, args, opts);
+        if (args && typeof args === "object") {
+          if (args.windowsHide === undefined) args.windowsHide = true;
+        }
+        return _execFile.call(this, file, args, opts);
+      }
+      if (opts && typeof opts === "object") {
+        if (opts.windowsHide === undefined) opts.windowsHide = true;
+      }
+      return _execFile.call(this, file, args, opts, cb);
+    };
+  } catch {
+    // Best-effort; swallow silently.
+  }
+}
+
+patchWindowsHide();
 
 export default function register(api) {
   const pluginCfg = api.pluginConfig ?? {};
