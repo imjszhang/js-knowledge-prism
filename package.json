@@ -1,0 +1,26 @@
+{
+  "name": "js-knowledge-prism",
+  "version": "1.0.0",
+  "description": "Knowledge Prism CLI — a pyramid-principle-based knowledge distillation toolkit for any project",
+  "type": "module",
+  "bin": {
+    "js-knowledge-prism": "./bin/cli.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "templates/",
+    "docs/"
+  ],
+  "keywords": [
+    "knowledge-management",
+    "pyramid-principle",
+    "note-taking",
+    "cli"
+  ],
+  "author": "JS",
+  "license": "MIT"
+}
