@@ -1,6 +1,8 @@
 # js-knowledge-prism
 
-基于金字塔原理的三层知识蒸馏 CLI 工具包。将散乱的时间线笔记转化为结构化知识产出。
+基于金字塔原理的三层知识蒸馏工具包。将散乱的时间线笔记转化为结构化知识产出。
+
+支持两种使用方式：独立 CLI 和 [OpenClaw](https://github.com/openclaw/openclaw) 插件。
 
 ## 快速开始
 
@@ -32,7 +34,7 @@ outputs/   读者产出层    ← 面向特定读者的成品文章
 
 详细方法论见 [docs/knowledge-prism-introduction.md](docs/knowledge-prism-introduction.md)。
 
-## 命令
+## CLI 命令
 
 ### `init <dir>`
 
@@ -91,7 +93,7 @@ npx js-knowledge-prism status
 npx js-knowledge-prism new-perspective tutorial --name "入门教程"
 ```
 
-## 配置
+## 配置（独立 CLI）
 
 `init` 命令会在知识棱镜根目录生成 `.knowledgeprism.json`：
 
@@ -100,7 +102,7 @@ npx js-knowledge-prism new-perspective tutorial --name "入门教程"
   "name": "知识库名称",
   "api": {
     "baseUrl": "http://localhost:8888/v1",
-    "model": "unsloth/Qwen3.5-397B-A17B",
+    "model": "your-model-name",
     "apiKey": ""
   },
   "process": {
@@ -122,10 +124,94 @@ npx js-knowledge-prism new-perspective tutorial --name "入门教程"
 | `KNOWLEDGE_PRISM_API_MODEL` | `api.model` |
 | `KNOWLEDGE_PRISM_API_KEY` | `api.apiKey` |
 
+## OpenClaw 插件
+
+本项目内置 OpenClaw 插件（`openclaw-plugin/` 目录），可将知识棱镜集成到 OpenClaw 的 CLI 和 AI Agent 中。
+
+### 启用插件
+
+在 OpenClaw 配置文件（如 `~/.openclaw/openclaw.json`）中添加：
+
+```json
+{
+  "plugins": {
+    "load": {
+      "paths": ["/path/to/js-knowledge-prism/openclaw-plugin"]
+    },
+    "entries": {
+      "knowledge-prism": {
+        "enabled": true,
+        "config": {
+          "baseDir": "/path/to/your-knowledge-base",
+          "api": {
+            "baseUrl": "http://localhost:8888/v1",
+            "model": "your-model-name",
+            "apiKey": "your-api-key"
+          },
+          "process": {
+            "batchSize": 5,
+            "temperature": 0.3,
+            "maxTokens": 8192,
+            "timeoutMs": 1800000
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+API 配置支持 `${ENV_VAR}` 语法引用环境变量。
+
+### 插件提供的 CLI 命令
+
+通过 `openclaw prism` 子命令组使用，功能与独立 CLI 一致：
+
+```bash
+openclaw prism init <dir> [--name <name>]
+openclaw prism process [--dry-run] [--auto-write] [--stage <n>] [--base-dir <dir>]
+openclaw prism status [--json] [--base-dir <dir>]
+openclaw prism new-perspective <slug> [--name <name>]
+```
+
+### 插件提供的 AI 工具
+
+插件注册了两个 AI 工具，OpenClaw Agent 在对话中可自动调用：
+
+- **`knowledge_prism_process`** — 执行增量处理（atoms → groups → synthesis），返回处理摘要
+- **`knowledge_prism_status`** — 查询知识库当前状态
+
+## 编程 API
+
+`lib/process.mjs` 和 `lib/status.mjs` 导出了可编程接口，方便集成到其他系统：
+
+```javascript
+import { createHttpCaller, runPipeline } from "js-knowledge-prism/lib/process.mjs";
+import { getStatus } from "js-knowledge-prism/lib/status.mjs";
+
+// 创建模型调用函数
+const callAgent = createHttpCaller({
+  baseUrl: "http://localhost:8888/v1",
+  model: "your-model",
+  apiKey: "your-key",
+});
+
+// 运行处理管道
+const summary = await runPipeline({
+  baseDir: "/path/to/knowledge-base",
+  config: { process: { batchSize: 5 } },
+  callAgent,
+  autoWrite: true,
+});
+
+// 查询状态
+const status = getStatus("/path/to/knowledge-base");
+```
+
 ## 要求
 
 - Node.js >= 18.0.0
-- 零外部依赖
+- 零外部依赖（独立 CLI 和核心模块均不依赖第三方包）
 
 ## License
 
