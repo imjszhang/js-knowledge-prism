@@ -159,9 +159,12 @@ export default function register(api) {
         .command("new-perspective <slug>")
         .description("从模板创建新视角")
         .option("--name <name>", "视角中文名称")
+        .option("--base-dir <dir>", "知识库根目录（覆盖插件配置）")
         .action(async (slug, opts) => {
           const args = [slug];
           if (opts.name) args.push("--name", opts.name);
+          const baseDirOpt = opts.baseDir ?? opts["base-dir"];
+          if (baseDirOpt) args.push("--base-dir", baseDirOpt);
           const { run } = await import("../lib/new-perspective.mjs");
           await run(args);
         });
@@ -271,6 +274,163 @@ export default function register(api) {
         }
 
         return { content: [{ type: "text", text: lines.join("\n") }] };
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_fill_perspective",
+      label: "Knowledge Prism Fill Perspective",
+      description:
+        "填充视角内容：stage=scqa 生成 SCQA，stage=keyline 生成 Key Line 表格。基于 synthesis 和 groups，会覆盖现有内容。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录路径。省略则使用插件配置的默认值。",
+          },
+          perspectiveDir: {
+            type: "string",
+            description: "视角目录名，如 P01-knowledge-org-methodology",
+          },
+          stage: {
+            type: "string",
+            enum: ["scqa", "keyline"],
+            description: "scqa=填充 scqa.md，keyline=填充 tree/README 的 Key Line 表格",
+          },
+          autoWrite: {
+            type: "boolean",
+            description: "是否写入文件。默认 true。",
+          },
+        },
+        required: ["perspectiveDir", "stage"],
+      },
+      async execute(_toolCallId, params) {
+        const baseDir = params.baseDir || resolveBaseDir();
+        const { runFillPerspective } = await import("../lib/fill-perspective.mjs");
+        const result = await runFillPerspective({
+          baseDir,
+          perspectiveDir: params.perspectiveDir,
+          stage: params.stage,
+          autoWrite: params.autoWrite ?? true,
+          callAgent: buildCallAgent(),
+        });
+
+        if (!result.success) {
+          return { content: [{ type: "text", text: `错误: ${result.message}` }] };
+        }
+
+        const preview = result.content
+          ? result.content.slice(0, 1500) + (result.content.length > 1500 ? "\n..." : "")
+          : "";
+        const text = `${result.message}\n\n${preview}`.trim();
+
+        return { content: [{ type: "text", text }] };
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_new_perspective",
+      label: "Knowledge Prism New Perspective",
+      description: "创建新视角骨架（scqa.md、validation.md、tree/README.md）。Agent 在对话中直接创建，无需切换终端。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录路径。省略则使用插件配置的默认值。",
+          },
+          slug: {
+            type: "string",
+            description: "视角的简短英文描述（用于目录名，如 deployment-guide）",
+          },
+          name: {
+            type: "string",
+            description: "视角中文名称（可选）",
+          },
+        },
+        required: ["slug"],
+      },
+      async execute(_toolCallId, params) {
+        const baseDir = params.baseDir || resolveBaseDir();
+        const { runWithBaseDir } = await import("../lib/new-perspective.mjs");
+        const result = runWithBaseDir({
+          baseDir,
+          slug: params.slug,
+          name: params.name,
+        });
+
+        if (result.error) {
+          return { content: [{ type: "text", text: `错误: ${result.error}` }] };
+        }
+
+        const text = [
+          `已创建视角: ${result.dirName}`,
+          `路径: ${result.perspectiveDir}`,
+          `文件: ${result.files.join(", ")}`,
+        ].join("\n");
+
+        return { content: [{ type: "text", text }] };
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_expand_kl",
+      label: "Knowledge Prism Expand KL",
+      description:
+        "展开 Key Line 为完整 KLxx-xxx.md，含支撑论点、逻辑顺序、atoms/groups 引用。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录路径。省略则使用插件配置的默认值。",
+          },
+          perspectiveDir: {
+            type: "string",
+            description: "视角目录名，如 P01-knowledge-org-methodology",
+          },
+          klId: {
+            type: "string",
+            description: "Key Line 编号，如 KL01 或 KL01-why-restructure",
+          },
+          autoWrite: {
+            type: "boolean",
+            description: "是否写入文件。默认 true。",
+          },
+        },
+        required: ["perspectiveDir", "klId"],
+      },
+      async execute(_toolCallId, params) {
+        const baseDir = params.baseDir || resolveBaseDir();
+        const { runExpandKl } = await import("../lib/expand-kl.mjs");
+        const result = await runExpandKl({
+          baseDir,
+          perspectiveDir: params.perspectiveDir,
+          klId: params.klId,
+          autoWrite: params.autoWrite ?? true,
+          callAgent: buildCallAgent(),
+        });
+
+        if (!result.success) {
+          return { content: [{ type: "text", text: `错误: ${result.message}` }] };
+        }
+
+        const preview = result.content
+          ? result.content.slice(0, 2000) + (result.content.length > 2000 ? "\n..." : "")
+          : "";
+        const text = `${result.message}\n\n${preview}`.trim();
+
+        return { content: [{ type: "text", text }] };
       },
     },
     { optional: true },
