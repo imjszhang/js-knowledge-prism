@@ -1,10 +1,6 @@
 {
   "name": "Knowledge Prism 架构",
-  "api": {
-    "baseUrl": "https://api.moonshot.cn/v1",
-    "model": "moonshot-v1-32k",
-    "apiKey": ""
-  },
+  "api": {},
   "process": {
     "batchSize": 5,
     "temperature": 0.3,

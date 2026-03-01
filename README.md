@@ -48,7 +48,8 @@ npx js-knowledge-prism init docs/knowledge --name "项目知识库"
 
 ```
 docs/knowledge/
-├── .knowledgeprism.json       # 配置文件（API、处理参数）
+├── .knowledgeprism.json       # 配置文件（处理参数，不含敏感信息）
+├── .env.example               # 环境变量模板（复制为 .env 填入实际值）
 ├── README.md                  # 知识库说明
 ├── CHANGELOG.md               # 架构变更日志
 ├── journal/                   # 原始笔记（按日期组织）
@@ -95,16 +96,12 @@ npx js-knowledge-prism new-perspective tutorial --name "入门教程"
 
 ## 配置（独立 CLI）
 
-`init` 命令会在知识棱镜根目录生成 `.knowledgeprism.json`：
+`init` 命令会在知识棱镜根目录生成 `.knowledgeprism.json`（不含敏感信息）和 `.env.example` 模板：
 
 ```json
 {
   "name": "知识库名称",
-  "api": {
-    "baseUrl": "http://localhost:8888/v1",
-    "model": "your-model-name",
-    "apiKey": ""
-  },
+  "api": {},
   "process": {
     "batchSize": 5,
     "temperature": 0.3,
@@ -114,15 +111,25 @@ npx js-knowledge-prism new-perspective tutorial --name "入门教程"
 }
 ```
 
-### 环境变量覆盖
+API 地址、模型和密钥通过环境变量配置。复制 `.env.example` 为 `.env` 并填入实际值：
 
-以下环境变量优先于配置文件（也可写在知识棱镜根目录的 `.env` 中）：
+```bash
+cp .env.example .env
+```
 
-| 环境变量 | 覆盖字段 |
-| --- | --- |
-| `KNOWLEDGE_PRISM_API_BASE_URL` | `api.baseUrl` |
-| `KNOWLEDGE_PRISM_API_MODEL` | `api.model` |
-| `KNOWLEDGE_PRISM_API_KEY` | `api.apiKey` |
+```ini
+KNOWLEDGE_PRISM_API_BASE_URL=http://localhost:8888/v1
+KNOWLEDGE_PRISM_API_MODEL=qwen3.5
+KNOWLEDGE_PRISM_API_KEY=your-api-key-here
+```
+
+| 环境变量 | 覆盖字段 | 默认值 |
+| --- | --- | --- |
+| `KNOWLEDGE_PRISM_API_BASE_URL` | `api.baseUrl` | `http://localhost:8888/v1` |
+| `KNOWLEDGE_PRISM_API_MODEL` | `api.model` | `unsloth/Qwen3.5-397B-A17B` |
+| `KNOWLEDGE_PRISM_API_KEY` | `api.apiKey` | `not-needed` |
+
+> `.env` 已在 `.gitignore` 中，不会被提交到仓库。
 
 ## OpenClaw 插件
 
