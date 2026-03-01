@@ -9,12 +9,24 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "scripts": {
+    "cli": "node cli/cli.cjs",
+    "build": "node cli/cli.cjs build",
+    "bump": "node cli/cli.cjs bump",
+    "commit": "node cli/cli.cjs commit",
+    "sync": "node cli/cli.cjs sync",
+    "release": "node cli/cli.cjs release",
+    "test": "node --test test/*.test.mjs"
+  },
   "files": [
     "bin/",
     "lib/",
     "templates/",
     "docs/"
   ],
+  "dependencies": {
+    "archiver": "^7.0.1"
+  },
   "keywords": [
     "knowledge-management",
     "pyramid-principle",

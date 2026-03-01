@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "generated": "2026-03-01T08:20:43.972Z",
+  "baseUrl": "https://github.com/user/js-knowledge-prism",
+  "parentSkill": {
+    "id": "js-knowledge-prism",
+    "version": "1.0.0"
+  },
+  "skills": [
+    {
+      "id": "prism-output-blog",
+      "name": "Prism Output: Blog",
+      "description": "Transform Knowledge Prism perspectives into blog-ready articles with frontmatter, sections, and call-to-action.",
+      "version": "1.0.0",
+      "emoji": "📝",
+      "requires": {
+        "skills": [
+          "js-knowledge-prism"
+        ],
+        "bins": [
+          "node"
+        ]
+      },
+      "downloadUrl": "https://github.com/user/js-knowledge-prism/dist/skills/prism-output-blog/prism-output-blog-skill.zip",
+      "homepage": "https://github.com/user/js-knowledge-prism",
+      "tools": [
+        "prism_blog_list_ready",
+        "prism_blog_generate"
+      ]
+    }
+  ]
+}

@@ -5,29 +5,50 @@
   "version": "1.0.0",
   "configSchema": {
     "type": "object",
-    "additionalProperties": false,
     "properties": {
       "baseDir": {
         "type": "string",
         "description": "知识库根目录（包含 journal/、pyramid/、outputs/ 的目录）"
       },
+      "skillsRegistryUrl": {
+        "type": "string",
+        "description": "扩展技能注册表 URL"
+      },
+      "skillsDir": {
+        "type": "string",
+        "description": "扩展技能安装目录"
+      },
       "api": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "baseUrl": { "type": "string" },
-          "model": { "type": "string" },
-          "apiKey": { "type": "string" }
+          "baseUrl": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "apiKey": {
+            "type": "string"
+          }
         }
       },
       "process": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "batchSize": { "type": "number" },
-          "temperature": { "type": "number" },
-          "maxTokens": { "type": "number" },
-          "timeoutMs": { "type": "number" }
+          "batchSize": {
+            "type": "number"
+          },
+          "temperature": {
+            "type": "number"
+          },
+          "maxTokens": {
+            "type": "number"
+          },
+          "timeoutMs": {
+            "type": "number"
+          }
         }
       }
     }
@@ -50,6 +71,14 @@
     "api.apiKey": {
       "label": "API Key",
       "sensitive": true
+    },
+    "skillsRegistryUrl": {
+      "label": "技能注册表 URL",
+      "help": "扩展技能的 skills.json 地址"
+    },
+    "skillsDir": {
+      "label": "技能安装目录",
+      "help": "扩展技能的本地安装路径"
     }
   }
 }

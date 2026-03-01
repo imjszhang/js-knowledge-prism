@@ -1,0 +1,39 @@
+{
+  "id": "prism-output-blog",
+  "name": "Prism Output: Blog",
+  "description": "将知识棱镜视角转化为博客文章",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "baseDir": {
+        "type": "string",
+        "description": "知识库根目录（需与主技能一致）"
+      },
+      "outputDir": {
+        "type": "string",
+        "description": "博客文章输出目录（默认为 outputs/blog/）"
+      },
+      "frontmatter": {
+        "type": "object",
+        "properties": {
+          "author": { "type": "string" },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "uiHints": {
+    "baseDir": {
+      "label": "知识库根目录",
+      "help": "应与 js-knowledge-prism 插件配置的 baseDir 一致"
+    },
+    "outputDir": {
+      "label": "博客输出目录",
+      "placeholder": "outputs/blog"
+    }
+  }
+}

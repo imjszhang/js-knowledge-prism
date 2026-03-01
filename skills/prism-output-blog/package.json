@@ -1,0 +1,6 @@
+{
+  "name": "prism-output-blog",
+  "version": "1.0.0",
+  "description": "Blog article generator for JS Knowledge Prism",
+  "type": "module"
+}
