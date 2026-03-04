@@ -2,7 +2,7 @@
 /**
  * 基于 analysis 生成新视角的完整流程
  * 用法: node scripts/generate-perspective.mjs <baseDir> <slug> [name]
- * 环境变量: LOCAL_LAN_BASE_URL, LOCAL_LAN_MODEL, LOCAL_LAN_API_KEY（或 KNOWLEDGE_PRISM_API_*）
+ * 环境变量: KNOWLEDGE_PRISM_API_BASE_URL, KNOWLEDGE_PRISM_API_MODEL, KNOWLEDGE_PRISM_API_KEY
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -32,9 +32,9 @@ import { runExpandKl } from "../lib/expand-kl.mjs";
 
 // API 配置：优先环境变量
 const apiConfig = {
-  baseUrl: process.env.LOCAL_LAN_BASE_URL || process.env.KNOWLEDGE_PRISM_API_BASE_URL || "http://localhost:8888/v1",
-  model: process.env.LOCAL_LAN_MODEL || process.env.KNOWLEDGE_PRISM_API_MODEL || "default",
-  apiKey: process.env.LOCAL_LAN_API_KEY || process.env.KNOWLEDGE_PRISM_API_KEY || "not-needed",
+  baseUrl: process.env.KNOWLEDGE_PRISM_API_BASE_URL || "http://localhost:8888/v1",
+  model: process.env.KNOWLEDGE_PRISM_API_MODEL || "default",
+  apiKey: process.env.KNOWLEDGE_PRISM_API_KEY || "not-needed",
   timeoutMs: 120_000,
 };
 
@@ -45,11 +45,11 @@ const callAgent = createHttpCaller({
 
 function checkApiConfig() {
   const base = apiConfig.baseUrl;
-  const hasCustom = process.env.LOCAL_LAN_BASE_URL || process.env.KNOWLEDGE_PRISM_API_BASE_URL;
+  const hasCustom = process.env.KNOWLEDGE_PRISM_API_BASE_URL;
   if (!hasCustom && (base.includes("localhost") || base.includes("127.0.0.1"))) {
     console.warn(
       "[提示] 使用默认 localhost。若 LLM 不可用，请配置环境变量：\n" +
-        "  LOCAL_LAN_BASE_URL  LOCAL_LAN_MODEL  LOCAL_LAN_API_KEY\n" +
+        "  KNOWLEDGE_PRISM_API_BASE_URL  KNOWLEDGE_PRISM_API_MODEL  KNOWLEDGE_PRISM_API_KEY\n" +
         "或在 baseDir/.env、~/.openclaw/.env 中设置。"
     );
   }
