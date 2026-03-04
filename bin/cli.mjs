@@ -18,6 +18,7 @@ js-knowledge-prism v${pkg.version}
   process                 金字塔增量处理（atoms → groups → synthesis）
   status                  查看待处理状态
   new-perspective <slug>  从模板创建新视角
+  output                  从视角生成面向读者的产出
 
 全局选项:
   -h, --help              显示帮助
@@ -28,6 +29,7 @@ js-knowledge-prism v${pkg.version}
   npx js-knowledge-prism process --dry-run
   npx js-knowledge-prism status
   npx js-knowledge-prism new-perspective blog-post
+  npx js-knowledge-prism output --perspective P01-xxx --template blog
 `.trim();
 
 const args = process.argv.slice(2);
@@ -64,6 +66,11 @@ try {
     }
     case "new-perspective": {
       const { run } = await import("../lib/new-perspective.mjs");
+      await run(commandArgs);
+      break;
+    }
+    case "output": {
+      const { run } = await import("../lib/output.mjs");
       await run(commandArgs);
       break;
     }

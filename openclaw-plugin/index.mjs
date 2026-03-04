@@ -5,6 +5,7 @@ import { tmpdir, homedir } from "node:os";
 import { execSync } from "node:child_process";
 import { createHttpCaller, runPipeline } from "../lib/process.mjs";
 import { getStatus } from "../lib/status.mjs";
+import { listTemplates, loadTemplate, runOutput } from "../lib/output.mjs";
 
 /**
  * Patch child_process.spawn / execFile to default windowsHide: true on Windows.
@@ -175,6 +176,58 @@ export default function register(api) {
           if (baseDirOpt) args.push("--base-dir", baseDirOpt);
           const { run } = await import("../lib/new-perspective.mjs");
           await run(args);
+        });
+
+      // --- prism output ---
+      prism
+        .command("output")
+        .description("从视角生成面向读者的产出（日记、博客等）")
+        .option("--perspective <dir>", "视角目录名（如 P23-practice-diary）")
+        .option("--template <name>", "输出模板名（如 practice-diary, blog）")
+        .option("--output-dir <dir>", "输出目录（默认 outputs/<template>）")
+        .option("--kl <ids>", "只处理指定 KL（逗号分隔）")
+        .option("--dry-run", "只预览，不调用模型")
+        .option("--force", "覆盖已存在的非骨架文件")
+        .option("--base-dir <dir>", "知识库根目录（覆盖插件配置）")
+        .option("--list-templates", "列出可用模板")
+        .action(async (opts) => {
+          const baseDir = opts.baseDir || resolveBaseDir();
+
+          if (opts.listTemplates) {
+            const templates = listTemplates(baseDir);
+            if (templates.length === 0) {
+              console.log("没有可用的模板。");
+              return;
+            }
+            console.log("\n可用模板:\n");
+            for (const t of templates) {
+              const tpl = loadTemplate(t.name, baseDir);
+              console.log(`  ${t.name} (${t.source})`);
+              if (tpl?.description) console.log(`    ${tpl.description}`);
+              console.log(`    拆分: ${tpl?.split || "per-kl"}, 命名: ${tpl?.fileNaming || "sequence"}`);
+              console.log();
+            }
+            return;
+          }
+
+          if (!opts.perspective || !opts.template) {
+            console.error("错误: 必须指定 --perspective 和 --template");
+            return;
+          }
+
+          await runOutput({
+            baseDir,
+            perspectiveDir: opts.perspective,
+            template: opts.template,
+            outputDir: opts.outputDir,
+            autoWrite: true,
+            dryRun: opts.dryRun || false,
+            force: opts.force || false,
+            klFilter: opts.kl ? opts.kl.split(",").map((s) => s.trim()) : undefined,
+            callAgent: buildCallAgent(),
+            log: (msg) => api.logger.info(msg),
+            warn: (msg) => api.logger.warn(msg),
+          });
         });
     },
     { commands: ["prism"] },
@@ -439,6 +492,126 @@ export default function register(api) {
         const text = `${result.message}\n\n${preview}`.trim();
 
         return { content: [{ type: "text", text }] };
+      },
+    },
+    { optional: true },
+  );
+
+  // ---------------------------------------------------------------------------
+  // AI Tools: knowledge_prism_output, knowledge_prism_list_templates
+  // ---------------------------------------------------------------------------
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_output",
+      label: "Knowledge Prism Output",
+      description:
+        "从视角生成面向读者的产出文件。根据模板将 KL 骨架 + journal 素材 + groups 归纳交给 LLM 生成最终内容。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录路径。省略则使用插件配置的默认值。",
+          },
+          perspectiveDir: {
+            type: "string",
+            description: "视角目录名，如 P23-practice-diary",
+          },
+          template: {
+            type: "string",
+            description: "输出模板名，如 practice-diary, blog",
+          },
+          outputDir: {
+            type: "string",
+            description: "输出目录（可选，默认 outputs/<template>）",
+          },
+          klFilter: {
+            type: "string",
+            description: "只处理指定 KL，逗号分隔（如 KL01,KL02）。省略则处理全部。",
+          },
+          force: {
+            type: "boolean",
+            description: "覆盖已存在的非骨架文件。默认 false。",
+          },
+        },
+        required: ["perspectiveDir", "template"],
+      },
+      async execute(_toolCallId, params) {
+        const baseDir = params.baseDir || resolveBaseDir();
+        const logs = [];
+        const warnings = [];
+
+        const result = await runOutput({
+          baseDir,
+          perspectiveDir: params.perspectiveDir,
+          template: params.template,
+          outputDir: params.outputDir,
+          autoWrite: true,
+          dryRun: false,
+          force: params.force ?? false,
+          klFilter: params.klFilter
+            ? params.klFilter.split(",").map((s) => s.trim())
+            : undefined,
+          callAgent: buildCallAgent(),
+          log: (msg) => logs.push(msg),
+          warn: (msg) => warnings.push(msg),
+        });
+
+        if (!result.success) {
+          return textResult(`错误: ${result.message}`);
+        }
+
+        const parts = [result.message];
+        if (result.results) {
+          for (const r of result.results) {
+            const label = r.klId ? `${r.klId} → ${r.file}` : r.file;
+            parts.push(`  ${r.status}: ${label}`);
+          }
+        }
+        if (warnings.length > 0) {
+          parts.push("", "警告:", ...warnings.map((w) => `  - ${w}`));
+        }
+
+        return textResult(parts.join("\n"));
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_list_templates",
+      label: "Knowledge Prism: List Output Templates",
+      description: "列出可用的输出模板（内置 + 知识库本地自定义模板）。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录路径。省略则使用插件配置的默认值。",
+          },
+        },
+      },
+      async execute(_toolCallId, params) {
+        const baseDir = params.baseDir || resolveBaseDir();
+        const templates = listTemplates(baseDir);
+
+        if (templates.length === 0) {
+          return textResult("没有可用的输出模板。");
+        }
+
+        const lines = [`## 可用模板 (${templates.length} 个)`, ""];
+        for (const t of templates) {
+          const tpl = loadTemplate(t.name, baseDir);
+          lines.push(`- **${t.name}** (${t.source})`);
+          if (tpl?.description) lines.push(`  ${tpl.description}`);
+          lines.push(`  拆分: ${tpl?.split || "per-kl"}, 命名: ${tpl?.fileNaming || "sequence"}`);
+          lines.push("");
+        }
+        lines.push("调用 knowledge_prism_output 并传入 template 参数来生成产出。");
+
+        return textResult(lines.join("\n"));
       },
     },
     { optional: true },

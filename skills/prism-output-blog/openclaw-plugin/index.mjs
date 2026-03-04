@@ -1,5 +1,8 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
-import { join, basename } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+import { runOutput, listTemplates, loadTemplate } from "../../../lib/output.mjs";
+import { createHttpCaller } from "../../../lib/process.mjs";
 
 export default function register(api) {
   const pluginCfg = api.pluginConfig ?? {};
@@ -10,14 +13,22 @@ export default function register(api) {
     return process.cwd();
   }
 
-  function resolveOutputDir(baseDir) {
-    return pluginCfg.outputDir
-      ? pluginCfg.outputDir
-      : join(baseDir, "outputs", "blog");
-  }
-
   function textResult(text) {
     return { content: [{ type: "text", text }] };
+  }
+
+  function buildCallAgent() {
+    const apiCfg = pluginCfg.api ?? {};
+    const procCfg = pluginCfg.process ?? {};
+    return createHttpCaller({
+      baseUrl: apiCfg.baseUrl || "http://localhost:8888/v1",
+      model: apiCfg.model || api.config?.agents?.defaults?.model?.primary || "default",
+      apiKey: apiCfg.apiKey || "not-needed",
+      temperature: procCfg.temperature ?? 0.3,
+      maxTokens: procCfg.maxTokens ?? 8192,
+      timeoutMs: procCfg.timeoutMs ?? 1_800_000,
+      log: (msg) => api.logger.info(msg),
+    });
   }
 
   function listReadyPerspectives(baseDir) {
@@ -38,11 +49,7 @@ export default function register(api) {
         readFileSync(treePath, "utf-8").includes("| KL");
 
       if (hasScqa && hasTree) {
-        perspectives.push({
-          dirName: d,
-          scqaPath,
-          treePath,
-        });
+        perspectives.push({ dirName: d });
       }
     }
     return perspectives;
@@ -81,7 +88,7 @@ export default function register(api) {
           lines.push(`- **${p.dirName}**`);
         }
         lines.push("");
-        lines.push("调用 prism_blog_generate 并传入 perspectiveDir 参数来生成文章。");
+        lines.push('调用 prism_blog_generate 并传入 perspectiveDir 参数来生成文章。');
 
         return textResult(lines.join("\n"));
       },
@@ -89,14 +96,14 @@ export default function register(api) {
     { optional: true },
   );
 
-  // ---- Tool: prism_blog_generate --------------------------------------------
+  // ---- Tool: prism_blog_generate (delegates to runOutput) -------------------
 
   api.registerTool(
     {
       name: "prism_blog_generate",
       label: "Prism Blog: Generate Article",
       description:
-        "从一个已完成的视角生成博客文章草稿。读取 SCQA 和 Key Line，组装为带 frontmatter 的 Markdown 文章。",
+        "从一个已完成的视角生成博客文章。使用通用 output 引擎 + blog 模板，将 SCQA + Key Line + journal 素材交给 LLM 生成完整文章。",
       parameters: {
         type: "object",
         properties: {
@@ -108,100 +115,48 @@ export default function register(api) {
             type: "string",
             description: "视角目录名，如 P01-knowledge-org",
           },
-          title: {
-            type: "string",
-            description: "文章标题（可选，默认从 SCQA 提取）",
-          },
-          autoWrite: {
+          force: {
             type: "boolean",
-            description: "是否写入文件。默认 true。",
+            description: "覆盖已存在的文件。默认 false。",
           },
         },
         required: ["perspectiveDir"],
       },
       async execute(_toolCallId, params) {
         const baseDir = params.baseDir || resolveBaseDir();
-        const structureDir = join(baseDir, "pyramid", "structure");
-        const pDir = join(structureDir, params.perspectiveDir);
+        const logs = [];
+        const warnings = [];
 
-        if (!existsSync(pDir)) {
-          return textResult(`错误: 视角目录不存在: ${params.perspectiveDir}`);
+        const result = await runOutput({
+          baseDir,
+          perspectiveDir: params.perspectiveDir,
+          template: "blog",
+          autoWrite: true,
+          dryRun: false,
+          force: params.force ?? false,
+          callAgent: buildCallAgent(),
+          log: (msg) => logs.push(msg),
+          warn: (msg) => warnings.push(msg),
+        });
+
+        if (!result.success) {
+          return textResult(`错误: ${result.message}`);
         }
 
-        const scqaPath = join(pDir, "scqa.md");
-        const treePath = join(pDir, "tree", "README.md");
-
-        if (!existsSync(scqaPath)) {
-          return textResult("错误: scqa.md 不存在，请先填充 SCQA。");
-        }
-        if (!existsSync(treePath)) {
-          return textResult("错误: tree/README.md 不存在，请先填充 Key Line。");
-        }
-
-        const scqa = readFileSync(scqaPath, "utf-8");
-        const tree = readFileSync(treePath, "utf-8");
-
-        const titleMatch = scqa.match(/^#\s+(.+)$/m);
-        const articleTitle = params.title || (titleMatch ? titleMatch[1] : params.perspectiveDir);
-
-        const klSections = [];
-        const treeDir = join(pDir, "tree");
-        if (existsSync(treeDir)) {
-          for (const f of readdirSync(treeDir).filter(f => f.startsWith("KL") && f.endsWith(".md"))) {
-            const content = readFileSync(join(treeDir, f), "utf-8");
-            klSections.push(content);
+        const parts = [result.message];
+        if (result.results?.length > 0) {
+          const generated = result.results.find((r) => r.status === "generated");
+          if (generated?.content) {
+            const preview = generated.content.slice(0, 2000);
+            parts.push("", preview);
+            if (generated.content.length > 2000) parts.push("...");
           }
         }
-
-        const now = new Date().toISOString().slice(0, 10);
-        const fmAuthor = pluginCfg.frontmatter?.author || "Author";
-        const fmTags = pluginCfg.frontmatter?.tags || [];
-
-        const parts = [
-          "---",
-          `title: "${articleTitle}"`,
-          `date: ${now}`,
-          `author: ${fmAuthor}`,
-          `tags: [${fmTags.map(t => `"${t}"`).join(", ")}]`,
-          "---",
-          "",
-          `# ${articleTitle}`,
-          "",
-          scqa.replace(/^#\s+.+\n/, "").trim(),
-          "",
-        ];
-
-        if (klSections.length > 0) {
-          for (const section of klSections) {
-            parts.push(section.trim());
-            parts.push("");
-          }
-        } else {
-          parts.push("<!-- Key Line 展开文档将作为文章主体各节 -->");
-          parts.push("");
-          parts.push(tree.trim());
-          parts.push("");
+        if (warnings.length > 0) {
+          parts.push("", "警告:", ...warnings.map((w) => `  - ${w}`));
         }
 
-        parts.push("---");
-        parts.push("");
-        parts.push(`*Generated from perspective ${params.perspectiveDir} on ${now}.*`);
-
-        const article = parts.join("\n");
-
-        if (params.autoWrite !== false) {
-          const outDir = resolveOutputDir(baseDir);
-          mkdirSync(outDir, { recursive: true });
-          const slug = params.perspectiveDir.replace(/^P\d+-/, "");
-          const outPath = join(outDir, `${slug}.md`);
-          writeFileSync(outPath, article, "utf-8");
-
-          return textResult(
-            `已生成博客文章: ${outPath}\n\n${article.slice(0, 2000)}${article.length > 2000 ? "\n..." : ""}`,
-          );
-        }
-
-        return textResult(article);
+        return textResult(parts.join("\n"));
       },
     },
     { optional: true },
