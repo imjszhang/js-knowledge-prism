@@ -78,3 +78,34 @@ fileNaming: date
 2. "遇到了什么"从 journal 中提取真实的卡点和挑战
 3. "学到了什么"结合 groups 归纳出认知层面的收获
 4. 文件底部的 **相关 Groups** 必须使用上方"精确链接"中提供的链接，原样复制
+
+# Skeleton Template
+
+以下定义骨架文件的正文结构（frontmatter 由脚本自动生成）。
+占位符 `{{...}}` 在生成骨架时由脚本替换为实际值。
+
+```
+# {{kl_date}}：第 {{kl_index}} 天：{{kl_thesis}}
+
+> 第 {{kl_index}} 天 · 基于视角 [{{perspective_id}}]({{perspective_link}}) · 骨架见 [{{kl_id}}]({{kl_link}})
+
+## 引用素材摘要
+
+{{refs_summary}}
+
+## 今天做了什么
+
+（待生成）
+
+## 遇到了什么
+
+（待生成）
+
+## 学到了什么
+
+（待生成）
+
+---
+
+**相关 Groups**：{{group_links}}
+```

@@ -45,3 +45,32 @@ fileNaming: slug
 2. 文章主体按 Key Line 组织章节
 3. 每个章节用 journal 素材和 groups 归纳充实
 4. 结尾回到 SCQA 的 A（答案），给出总结
+
+# Skeleton Template
+
+以下定义骨架文件的正文结构（frontmatter 由脚本自动生成）。
+占位符 `{{...}}` 在生成骨架时由脚本替换为实际值。
+
+```
+# {{perspective_name}}
+
+> 基于视角 [{{perspective_id}}]({{perspective_link}}) · SCQA 见 [scqa.md]({{scqa_link}})
+
+## 引用素材摘要
+
+{{refs_summary}}
+
+## 引言
+
+（待生成）
+
+{{kl_sections}}
+
+## 总结
+
+（待生成）
+
+---
+
+**相关 Groups**：{{group_links}}
+```

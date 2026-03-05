@@ -186,6 +186,8 @@ export default function register(api) {
         .option("--template <name>", "输出模板名（如 practice-diary, blog）")
         .option("--output-dir <dir>", "输出目录（默认 outputs/<template>）")
         .option("--kl <ids>", "只处理指定 KL（逗号分隔）")
+        .option("--skeleton", "只生成骨架文件（不调用 LLM）")
+        .option("--validate", "只验证已有骨架的引用有效性")
         .option("--dry-run", "只预览，不调用模型")
         .option("--force", "覆盖已存在的非骨架文件")
         .option("--base-dir <dir>", "知识库根目录（覆盖插件配置）")
@@ -215,16 +217,21 @@ export default function register(api) {
             return;
           }
 
+          let mode;
+          if (opts.skeleton) mode = "skeleton";
+          else if (opts.validate) mode = "validate";
+
           await runOutput({
             baseDir,
             perspectiveDir: opts.perspective,
             template: opts.template,
             outputDir: opts.outputDir,
+            mode,
             autoWrite: true,
             dryRun: opts.dryRun || false,
             force: opts.force || false,
             klFilter: opts.kl ? opts.kl.split(",").map((s) => s.trim()) : undefined,
-            callAgent: buildCallAgent(),
+            callAgent: mode ? undefined : buildCallAgent(),
             log: (msg) => api.logger.info(msg),
             warn: (msg) => api.logger.warn(msg),
           });
@@ -506,7 +513,8 @@ export default function register(api) {
       name: "knowledge_prism_output",
       label: "Knowledge Prism Output",
       description:
-        "从视角生成面向读者的产出文件。根据模板将 KL 骨架 + journal 素材 + groups 归纳交给 LLM 生成最终内容。",
+        "从视角生成面向读者的产出文件。支持三种模式：skeleton（生成骨架）、validate（验证骨架引用）、generate（默认，调 LLM 生成内容）。" +
+        "推荐两阶段流程：先 skeleton 生成骨架审查引用，再 generate 填充内容。",
       parameters: {
         type: "object",
         properties: {
@@ -521,6 +529,11 @@ export default function register(api) {
           template: {
             type: "string",
             description: "输出模板名，如 practice-diary, blog",
+          },
+          mode: {
+            type: "string",
+            enum: ["skeleton", "validate", "generate"],
+            description: "执行模式：skeleton=生成骨架文件, validate=验证骨架引用, generate=调 LLM 生成内容（默认）。",
           },
           outputDir: {
             type: "string",
@@ -541,19 +554,21 @@ export default function register(api) {
         const baseDir = params.baseDir || resolveBaseDir();
         const logs = [];
         const warnings = [];
+        const mode = params.mode || "generate";
 
         const result = await runOutput({
           baseDir,
           perspectiveDir: params.perspectiveDir,
           template: params.template,
           outputDir: params.outputDir,
+          mode,
           autoWrite: true,
           dryRun: false,
           force: params.force ?? false,
           klFilter: params.klFilter
             ? params.klFilter.split(",").map((s) => s.trim())
             : undefined,
-          callAgent: buildCallAgent(),
+          callAgent: mode === "generate" ? buildCallAgent() : undefined,
           log: (msg) => logs.push(msg),
           warn: (msg) => warnings.push(msg),
         });
@@ -568,6 +583,9 @@ export default function register(api) {
             const label = r.klId ? `${r.klId} → ${r.file}` : r.file;
             parts.push(`  ${r.status}: ${label}`);
           }
+        }
+        if (result.warnings?.length > 0) {
+          parts.push("", "引用警告:", ...result.warnings.map((w) => `  - ${w}`));
         }
         if (warnings.length > 0) {
           parts.push("", "警告:", ...warnings.map((w) => `  - ${w}`));
