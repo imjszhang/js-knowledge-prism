@@ -1,11 +1,26 @@
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { execSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { createHttpCaller, runPipeline } from "../lib/process.mjs";
 import { getStatus } from "../lib/status.mjs";
 import { listTemplates, loadTemplate, runOutput } from "../lib/output.mjs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = resolve(__dirname, "..");
+
+function loadProjectDotEnv(envPath) {
+  if (!existsSync(envPath)) return;
+  for (const line of readFileSync(envPath, "utf-8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    const m = trimmed.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+    if (m && !process.env[m[1]]) {
+      process.env[m[1]] = m[2].trim();
+    }
+  }
+}
 
 /**
  * Patch child_process.spawn / execFile to default windowsHide: true on Windows.
@@ -55,6 +70,9 @@ function patchWindowsHide() {
 patchWindowsHide();
 
 export default function register(api) {
+  // Load project-local .env (won't clobber existing env vars)
+  loadProjectDotEnv(join(PROJECT_ROOT, ".env"));
+
   const pluginCfg = api.pluginConfig ?? {};
 
   function resolveBaseDir() {
