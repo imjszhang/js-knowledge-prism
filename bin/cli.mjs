@@ -19,6 +19,7 @@ js-knowledge-prism v${pkg.version}
   status                  查看待处理状态
   new-perspective <slug>  从模板创建新视角
   output                  从视角生成面向读者的产出
+  agent-index             生成 Agent 检索索引（SKILL.md + CONTEXT.md）
 
 全局选项:
   -h, --help              显示帮助
@@ -71,6 +72,11 @@ try {
     }
     case "output": {
       const { run } = await import("../lib/output.mjs");
+      await run(commandArgs);
+      break;
+    }
+    case "agent-index": {
+      const { run } = await import("../lib/agent-index.mjs");
       await run(commandArgs);
       break;
     }

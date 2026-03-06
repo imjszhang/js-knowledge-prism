@@ -236,6 +236,23 @@ export default function register(api) {
             warn: (msg) => api.logger.warn(msg),
           });
         });
+
+      // --- prism agent-index ---
+      prism
+        .command("agent-index")
+        .description("生成 Agent 检索索引（SKILL.md + CONTEXT.md）")
+        .option("--base-dir <dir>", "知识库根目录（覆盖插件配置）")
+        .action(async (opts) => {
+          const baseDir = opts.baseDir || resolveBaseDir();
+          const { runAgentIndex } = await import("../lib/agent-index.mjs");
+          const result = runAgentIndex({
+            baseDir,
+            config: { name: pluginCfg.name },
+            log: (msg) => api.logger.info(msg),
+            warn: (msg) => api.logger.warn(msg),
+          });
+          api.logger.info(`Agent 索引生成完毕: SKILL.md=${result.skillMdWritten}, CONTEXT.md=${result.contextCount}个`);
+        });
     },
     { commands: ["prism"] },
   );
@@ -628,6 +645,51 @@ export default function register(api) {
           lines.push("");
         }
         lines.push("调用 knowledge_prism_output 并传入 template 参数来生成产出。");
+
+        return textResult(lines.join("\n"));
+      },
+    },
+    { optional: true },
+  );
+
+  // ---------------------------------------------------------------------------
+  // AI Tool: knowledge_prism_agent_index
+  // ---------------------------------------------------------------------------
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_agent_index",
+      label: "Knowledge Prism: Generate Agent Index",
+      description:
+        "生成知识库的 Agent 检索索引：根级 SKILL.md（知识地图）和各视角的 CONTEXT.md（决策摘要）。纯确定性提取，不调用 LLM。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录路径。省略则使用插件配置的默认值。",
+          },
+        },
+      },
+      async execute(_toolCallId, params) {
+        const baseDir = params.baseDir || resolveBaseDir();
+        const { runAgentIndex } = await import("../lib/agent-index.mjs");
+
+        const logs = [];
+        const result = runAgentIndex({
+          baseDir,
+          config: { name: pluginCfg.name },
+          log: (msg) => logs.push(msg),
+          warn: (msg) => logs.push(`⚠ ${msg}`),
+        });
+
+        const lines = [
+          `Agent 索引生成完毕 (${baseDir})`,
+          `- SKILL.md: ${result.skillMdWritten ? "已更新" : "跳过"}`,
+          `- CONTEXT.md: ${result.contextCount} 个视角`,
+          "",
+          ...logs,
+        ];
 
         return textResult(lines.join("\n"));
       },
