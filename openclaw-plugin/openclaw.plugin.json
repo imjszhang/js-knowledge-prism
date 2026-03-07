@@ -3,6 +3,7 @@
   "name": "JS Knowledge Prism",
   "description": "金字塔原理知识蒸馏工具 — 从 journal 笔记自动提取 atoms、归组 groups、收敛 synthesis",
   "version": "1.0.0",
+  "skills": ["./skills"],
   "configSchema": {
     "type": "object",
     "properties": {
@@ -50,6 +51,20 @@
             "type": "number"
           }
         }
+      },
+      "cron": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "defaultInterval": {
+            "type": "number",
+            "description": "自动处理的默认间隔（分钟）"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "cron 时区（IANA 格式）"
+          }
+        }
       }
     }
   },
@@ -79,6 +94,16 @@
     "skillsDir": {
       "label": "技能安装目录",
       "help": "扩展技能的本地安装路径"
+    },
+    "cron.defaultInterval": {
+      "label": "自动处理间隔",
+      "help": "定时处理所有注册知识库的间隔（分钟）",
+      "placeholder": "60"
+    },
+    "cron.timezone": {
+      "label": "Cron 时区",
+      "help": "IANA 时区标识，如 Asia/Shanghai",
+      "placeholder": "Asia/Shanghai"
     }
   }
 }

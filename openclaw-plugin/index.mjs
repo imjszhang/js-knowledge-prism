@@ -1,8 +1,8 @@
 import { createRequire } from "node:module";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir, homedir } from "node:os";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createHttpCaller, runPipeline } from "../lib/process.mjs";
 import { getStatus } from "../lib/status.mjs";
@@ -108,6 +108,61 @@ export default function register(api) {
       timeoutMs: procCfg.timeoutMs ?? 1_800_000,
       log: (msg) => api.logger.info(msg),
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Registry helpers (multi-base registration for cron auto-processing)
+  // ---------------------------------------------------------------------------
+
+  function getRegistryDir() {
+    const workspace =
+      api.config?.agents?.defaults?.workspace || process.cwd();
+    return join(workspace, ".openclaw", "prism-processor");
+  }
+
+  function getRegistryPath() {
+    return join(getRegistryDir(), "registry.json");
+  }
+
+  function loadRegistry() {
+    const p = getRegistryPath();
+    if (!existsSync(p)) return { bases: [] };
+    try {
+      return JSON.parse(readFileSync(p, "utf-8"));
+    } catch {
+      return { bases: [] };
+    }
+  }
+
+  function saveRegistry(data) {
+    const dir = getRegistryDir();
+    mkdirSync(dir, { recursive: true });
+    const p = getRegistryPath();
+    const tmp = p + ".tmp";
+    writeFileSync(tmp, JSON.stringify(data, null, 2) + "\n", "utf-8");
+    renameSync(tmp, p);
+  }
+
+  function normalizeBaseDir(dir) {
+    return resolve(dir).replace(/\\/g, "/").replace(/\/+$/, "");
+  }
+
+  function findBaseIndex(registry, baseDir) {
+    const norm = normalizeBaseDir(baseDir);
+    return registry.bases.findIndex(
+      (b) => normalizeBaseDir(b.baseDir) === norm,
+    );
+  }
+
+  function readBaseName(baseDir) {
+    const cfgPath = join(baseDir, ".knowledgeprism.json");
+    if (!existsSync(cfgPath)) return null;
+    try {
+      const raw = JSON.parse(readFileSync(cfgPath, "utf-8"));
+      return raw.name || "Knowledge Prism";
+    } catch {
+      return "Knowledge Prism";
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -270,6 +325,180 @@ export default function register(api) {
             warn: (msg) => api.logger.warn(msg),
           });
           api.logger.info(`Agent 索引生成完毕: SKILL.md=${result.skillMdWritten}, CONTEXT.md=${result.contextCount}个`);
+        });
+
+      // --- prism register ---
+      prism
+        .command("register <dir>")
+        .description("注册知识库到自动处理列表")
+        .action(async (dir) => {
+          const absDir = resolve(dir);
+          const name = readBaseName(absDir);
+          if (!name) {
+            console.error(`\n  错误: ${absDir} 下未找到 .knowledgeprism.json`);
+            console.error(`  请先运行: openclaw prism init ${dir}\n`);
+            return;
+          }
+          const registry = loadRegistry();
+          const idx = findBaseIndex(registry, absDir);
+          if (idx >= 0) {
+            console.log(`\n  该知识库已注册: ${registry.bases[idx].name} (${normalizeBaseDir(absDir)})\n`);
+            return;
+          }
+          registry.bases.push({
+            baseDir: normalizeBaseDir(absDir),
+            name,
+            registeredAt: new Date().toISOString(),
+            enabled: true,
+            lastProcessedAt: null,
+            lastSummary: null,
+          });
+          saveRegistry(registry);
+          console.log(`\n  ✓ 已注册: ${name} (${normalizeBaseDir(absDir)})\n`);
+        });
+
+      // --- prism unregister ---
+      prism
+        .command("unregister <dir>")
+        .description("从自动处理列表移除知识库")
+        .action(async (dir) => {
+          const absDir = resolve(dir);
+          const registry = loadRegistry();
+          const idx = findBaseIndex(registry, absDir);
+          if (idx < 0) {
+            console.log(`\n  该知识库未注册: ${normalizeBaseDir(absDir)}\n`);
+            return;
+          }
+          const removed = registry.bases.splice(idx, 1)[0];
+          saveRegistry(registry);
+          console.log(`\n  ✓ 已移除: ${removed.name} (${normalizeBaseDir(absDir)})\n`);
+        });
+
+      // --- prism registered ---
+      prism
+        .command("registered")
+        .description("查看所有已注册知识库")
+        .option("--json", "以 JSON 格式输出")
+        .option("--status", "同时显示各库最新处理状态")
+        .action(async (opts) => {
+          const registry = loadRegistry();
+          if (registry.bases.length === 0) {
+            console.log("\n  尚未注册任何知识库。");
+            console.log("  运行 openclaw prism register <dir> 添加知识库。\n");
+            return;
+          }
+          if (opts.json) {
+            if (opts.status) {
+              for (const base of registry.bases) {
+                try {
+                  if (base.enabled && existsSync(join(base.baseDir, ".knowledgeprism.json"))) {
+                    base._status = getStatus(base.baseDir);
+                  }
+                } catch { /* skip */ }
+              }
+            }
+            console.log(JSON.stringify(registry, null, 2));
+            return;
+          }
+          const enabled = registry.bases.filter((b) => b.enabled).length;
+          const disabled = registry.bases.length - enabled;
+          console.log(`\n  已注册知识库（${enabled} 个启用${disabled ? ` / ${disabled} 个禁用` : ""}）\n`);
+          for (let i = 0; i < registry.bases.length; i++) {
+            const b = registry.bases[i];
+            const flag = b.enabled ? "✓ 启用" : "⏸ 禁用";
+            const lastTs = b.lastProcessedAt
+              ? b.lastProcessedAt.replace("T", " ").slice(0, 16)
+              : "从未";
+            console.log(`  ${i + 1}. ${b.name} [${flag}]`);
+            console.log(`     路径: ${b.baseDir}`);
+            if (opts.status && b.enabled) {
+              try {
+                if (!existsSync(join(b.baseDir, ".knowledgeprism.json"))) {
+                  console.log(`     状态: [路径无效]`);
+                } else {
+                  const st = getStatus(b.baseDir);
+                  console.log(`     待处理: ${st.unprocessed.length} 篇 journal, 未归组: ${st.ungroupedCount} 个 atom`);
+                }
+              } catch (err) {
+                console.log(`     状态: [读取失败] ${err.message}`);
+              }
+            }
+            console.log(`     上次处理: ${lastTs}`);
+            if (b.lastSummary) console.log(`     摘要: ${b.lastSummary}`);
+            console.log();
+          }
+        });
+
+      // --- prism setup-cron ---
+      prism
+        .command("setup-cron")
+        .description("配置知识棱镜的 cron 定时任务（定时批量处理所有已注册知识库）")
+        .option("--every <minutes>", "执行间隔（分钟）", String(pluginCfg.cron?.defaultInterval ?? 60))
+        .option("--tz <timezone>", "时区（IANA）", pluginCfg.cron?.timezone ?? "Asia/Shanghai")
+        .option("--remove", "移除定时任务")
+        .action(async (opts) => {
+          const JOB_NAME = "prism-auto-process";
+          const openclawBin = process.argv[0];
+          const openclawEntry = process.argv[1];
+
+          function runOcCron(args) {
+            return execFileSync(openclawBin, [openclawEntry, "cron", ...args], {
+              encoding: "utf-8",
+              timeout: 30_000,
+            }).trim();
+          }
+
+          try {
+            if (opts.remove) {
+              const listJson = runOcCron(["list", "--json"]);
+              const { jobs } = JSON.parse(listJson);
+              const existing = jobs.find((j) => j.name === JOB_NAME);
+              if (!existing) {
+                console.log(`\n  未找到名为 "${JOB_NAME}" 的定时任务，无需移除。\n`);
+                return;
+              }
+              runOcCron(["rm", existing.id]);
+              console.log(`\n  ✓ 已移除定时任务 "${JOB_NAME}" (${existing.id})\n`);
+              return;
+            }
+
+            const listJson = runOcCron(["list", "--json"]);
+            const { jobs } = JSON.parse(listJson);
+            const existing = jobs.find((j) => j.name === JOB_NAME);
+            if (existing) {
+              console.log(`\n  定时任务 "${JOB_NAME}" 已存在 (${existing.id})。`);
+              console.log(`  如需重新配置，请先执行: openclaw prism setup-cron --remove\n`);
+              return;
+            }
+
+            const minutes = parseInt(opts.every, 10);
+            if (isNaN(minutes) || minutes < 1) {
+              console.error("  错误: --every 必须为正整数（分钟）");
+              return;
+            }
+
+            const cronExpr = `*/${minutes} * * * *`;
+            const result = runOcCron([
+              "add",
+              "--name", JOB_NAME,
+              "--cron", cronExpr,
+              "--tz", opts.tz,
+              "--session", "isolated",
+              "--message", "执行 prism-processor 技能的定时处理流程：检查并处理所有已注册知识库。",
+              "--thinking", "minimal",
+              "--json",
+            ]);
+
+            const job = JSON.parse(result);
+            console.log(`\n  ✓ 定时任务已创建`);
+            console.log(`    名称: ${job.name}`);
+            console.log(`    ID:   ${job.id}`);
+            console.log(`    调度: 每 ${minutes} 分钟`);
+            console.log(`    时区: ${opts.tz}\n`);
+          } catch (err) {
+            console.error(`  配置失败: ${err.message}`);
+            if (err.stderr) console.error(err.stderr);
+          }
         });
     },
     { commands: ["prism"] },
@@ -708,6 +937,295 @@ export default function register(api) {
           "",
           ...logs,
         ];
+
+        return textResult(lines.join("\n"));
+      },
+    },
+    { optional: true },
+  );
+
+  // ---------------------------------------------------------------------------
+  // AI Tools: knowledge_prism_register / unregister / list_registered
+  // ---------------------------------------------------------------------------
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_register",
+      label: "Knowledge Prism: Register Knowledge Base",
+      description:
+        "注册知识库到自动处理列表，或更新已注册知识库的启用状态。" +
+        "注册后可通过 cron 定时任务自动处理。传入 enabled=false 可暂停自动处理。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录路径（必须包含 .knowledgeprism.json）",
+          },
+          enabled: {
+            type: "boolean",
+            description: "是否启用自动处理。默认 true。传 false 可暂停处理而不移除注册。",
+          },
+        },
+        required: ["baseDir"],
+      },
+      async execute(_toolCallId, params) {
+        const absDir = resolve(params.baseDir);
+        const enabled = params.enabled ?? true;
+        const registry = loadRegistry();
+        const idx = findBaseIndex(registry, absDir);
+
+        if (idx >= 0) {
+          registry.bases[idx].enabled = enabled;
+          saveRegistry(registry);
+          return textResult(
+            `已更新: ${registry.bases[idx].name} → enabled=${enabled}`,
+          );
+        }
+
+        const name = readBaseName(absDir);
+        if (!name) {
+          return textResult(
+            `错误: ${absDir} 下未找到 .knowledgeprism.json。请先初始化知识库。`,
+          );
+        }
+
+        registry.bases.push({
+          baseDir: normalizeBaseDir(absDir),
+          name,
+          registeredAt: new Date().toISOString(),
+          enabled,
+          lastProcessedAt: null,
+          lastSummary: null,
+        });
+        saveRegistry(registry);
+        return textResult(`已注册: ${name} (${normalizeBaseDir(absDir)})`);
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_unregister",
+      label: "Knowledge Prism: Unregister Knowledge Base",
+      description: "从自动处理列表中完全移除知识库。移除后 cron 不再处理该库。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "要移除的知识库根目录路径",
+          },
+        },
+        required: ["baseDir"],
+      },
+      async execute(_toolCallId, params) {
+        const absDir = resolve(params.baseDir);
+        const registry = loadRegistry();
+        const idx = findBaseIndex(registry, absDir);
+        if (idx < 0) {
+          return textResult(
+            `该知识库未注册: ${normalizeBaseDir(absDir)}`,
+          );
+        }
+        const removed = registry.bases.splice(idx, 1)[0];
+        saveRegistry(registry);
+        return textResult(`已移除: ${removed.name} (${normalizeBaseDir(absDir)})`);
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_list_registered",
+      label: "Knowledge Prism: List Registered Bases",
+      description:
+        "列出所有已注册的知识库及其状态。可选显示各库的最新处理状态（待处理 journal 数等）。",
+      parameters: {
+        type: "object",
+        properties: {
+          showStatus: {
+            type: "boolean",
+            description: "是否同时查询并显示各库最新处理状态。默认 true。",
+          },
+        },
+      },
+      async execute(_toolCallId, params) {
+        const registry = loadRegistry();
+        if (registry.bases.length === 0) {
+          return textResult(
+            "尚未注册任何知识库。使用 knowledge_prism_register 添加知识库。",
+          );
+        }
+
+        const showStatus = params.showStatus ?? true;
+        const enabled = registry.bases.filter((b) => b.enabled).length;
+        const disabled = registry.bases.length - enabled;
+        const lines = [
+          `已注册知识库（${enabled} 个启用${disabled ? ` / ${disabled} 个禁用` : ""}）`,
+          "",
+        ];
+
+        for (let i = 0; i < registry.bases.length; i++) {
+          const b = registry.bases[i];
+          const flag = b.enabled ? "启用" : "禁用";
+          const lastTs = b.lastProcessedAt
+            ? b.lastProcessedAt.replace("T", " ").slice(0, 16)
+            : "从未";
+
+          lines.push(`${i + 1}. **${b.name}** [${flag}]`);
+          lines.push(`   路径: ${b.baseDir}`);
+
+          if (showStatus && b.enabled) {
+            try {
+              if (!existsSync(join(b.baseDir, ".knowledgeprism.json"))) {
+                lines.push("   状态: [路径无效]");
+              } else {
+                const st = getStatus(b.baseDir);
+                lines.push(
+                  `   待处理: ${st.unprocessed.length} 篇 journal, 未归组: ${st.ungroupedCount} 个 atom`,
+                );
+              }
+            } catch (err) {
+              lines.push(`   状态: [读取失败] ${err.message}`);
+            }
+          }
+
+          lines.push(`   上次处理: ${lastTs}`);
+          if (b.lastSummary) lines.push(`   摘要: ${b.lastSummary}`);
+          lines.push("");
+        }
+
+        return textResult(lines.join("\n"));
+      },
+    },
+    { optional: true },
+  );
+
+  // ---------------------------------------------------------------------------
+  // AI Tool: knowledge_prism_process_all
+  // ---------------------------------------------------------------------------
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_process_all",
+      label: "Knowledge Prism: Process All Registered Bases",
+      description:
+        "批量处理所有已注册且启用的知识库。遍历注册表，对有待处理内容的知识库执行增量 pipeline" +
+        "（atoms → groups → synthesis + Agent 索引更新）。单库失败不影响其他库。",
+      parameters: {
+        type: "object",
+        properties: {
+          dryRun: {
+            type: "boolean",
+            description: "只检查各库状态，不实际执行处理。默认 false。",
+          },
+        },
+      },
+      async execute(_toolCallId, params) {
+        const registry = loadRegistry();
+        const enabledBases = registry.bases.filter((b) => b.enabled);
+
+        if (enabledBases.length === 0) {
+          return textResult(
+            "未注册任何启用的知识库。请先使用 knowledge_prism_register 注册。",
+          );
+        }
+
+        const dryRun = params.dryRun ?? false;
+        const results = [];
+
+        for (const base of enabledBases) {
+          const entry = { name: base.name, baseDir: base.baseDir };
+
+          if (!existsSync(join(base.baseDir, ".knowledgeprism.json"))) {
+            entry.status = "error";
+            entry.message = "路径无效或未初始化";
+            results.push(entry);
+            continue;
+          }
+
+          let status;
+          try {
+            status = getStatus(base.baseDir);
+          } catch (err) {
+            entry.status = "error";
+            entry.message = `状态读取失败: ${err.message?.slice(0, 150)}`;
+            results.push(entry);
+            continue;
+          }
+
+          const hasWork =
+            status.unprocessed.length > 0 || status.ungroupedCount > 0;
+
+          if (!hasWork) {
+            entry.status = "skipped";
+            entry.message = "无新内容";
+            base.lastProcessedAt = new Date().toISOString();
+            base.lastSummary = "无新内容";
+            results.push(entry);
+            continue;
+          }
+
+          if (dryRun) {
+            entry.status = "dry-run";
+            entry.message =
+              `待处理: ${status.unprocessed.length} journal, 未归组: ${status.ungroupedCount} atom`;
+            results.push(entry);
+            continue;
+          }
+
+          try {
+            const summary = await runPipeline({
+              baseDir: base.baseDir,
+              config: buildConfig(),
+              callAgent: buildCallAgent(),
+              dryRun: false,
+              autoWrite: true,
+              maxStage: 3,
+              verbose: false,
+              log: (msg) => api.logger.info(`[${base.name}] ${msg}`),
+              warn: (msg) => api.logger.warn(`[${base.name}] ${msg}`),
+            });
+
+            entry.status = "processed";
+            entry.message =
+              `atoms: ${summary.atomsProcessed}, groups 新建: ${summary.groupsWritten}, ` +
+              `更新: ${summary.groupsUpdated}, synthesis: ${summary.synthesisUpdated ? "已更新" : "未变"}`;
+            base.lastProcessedAt = new Date().toISOString();
+            base.lastSummary = entry.message;
+          } catch (err) {
+            entry.status = "error";
+            entry.message = err.message?.slice(0, 200);
+          }
+
+          results.push(entry);
+        }
+
+        if (!dryRun) {
+          try {
+            saveRegistry(registry);
+          } catch { /* best-effort */ }
+        }
+
+        const disabledCount = registry.bases.length - enabledBases.length;
+        const header =
+          `自动处理完毕（已注册 ${registry.bases.length} 个` +
+          `${disabledCount ? `，${disabledCount} 个已禁用` : ""}）`;
+        const lines = [header, ""];
+
+        for (const r of results) {
+          const icon =
+            r.status === "processed" ? "✓" :
+            r.status === "skipped" ? "—" :
+            r.status === "dry-run" ? "👁" :
+            "✗";
+          lines.push(`${icon} ${r.name}`);
+          lines.push(`  ${r.message}`);
+          lines.push("");
+        }
 
         return textResult(lines.join("\n"));
       },

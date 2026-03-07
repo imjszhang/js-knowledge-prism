@@ -50,6 +50,10 @@ The OpenClaw plugin connects to an OpenAI-compatible LLM API to drive extraction
 | `knowledge_prism_new_perspective` | Create a new perspective skeleton from template |
 | `knowledge_prism_fill_perspective` | Generate SCQA or Key Line content for a perspective |
 | `knowledge_prism_expand_kl` | Expand a Key Line into a full supporting argument document |
+| `knowledge_prism_register` | Register a knowledge base for automatic cron processing |
+| `knowledge_prism_unregister` | Remove a knowledge base from automatic processing |
+| `knowledge_prism_list_registered` | List all registered knowledge bases with status |
+| `knowledge_prism_process_all` | Batch process all registered and enabled knowledge bases |
 
 ## CLI Commands
 
@@ -58,6 +62,10 @@ openclaw prism init <dir>              Initialize knowledge prism skeleton
 openclaw prism process [--dry-run]     Run incremental processing
 openclaw prism status [--json]         View processing status
 openclaw prism new-perspective <slug>  Create new perspective from template
+openclaw prism register <dir>          Register knowledge base for auto-processing
+openclaw prism unregister <dir>        Remove from auto-processing list
+openclaw prism registered [--status]   List registered knowledge bases
+openclaw prism setup-cron [--every N]  Configure cron job for automatic processing
 ```
 
 ## Skill Bundle Structure
@@ -70,7 +78,10 @@ js-knowledge-prism/
 ├── openclaw-plugin/
 │   ├── openclaw.plugin.json           ← Plugin manifest (config schema, UI hints)
 │   ├── package.json                   ← ESM module descriptor
-│   └── index.mjs                      ← Plugin logic — 5 AI tools + CLI
+│   ├── index.mjs                      ← Plugin logic — 9 AI tools + CLI
+│   └── skills/
+│       └── prism-processor/
+│           └── SKILL.md               ← Cron auto-processing skill definition
 ├── lib/
 │   ├── config.mjs                     ← Configuration loading
 │   ├── process.mjs                    ← Core pipeline (atoms → groups → synthesis)
