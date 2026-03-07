@@ -1,6 +1,6 @@
 ---
 name: "Knowledge Prism 架构"
-description: "Knowledge Prism 架构 — 结构化知识体系，覆盖：Knowledge Prism 是一种将日常笔记转化为结构化…；Agent-First 架构模式强调以 AI Agent 为…。1 个视角、2 个分组，可按需检索。"
+description: "Knowledge Prism 架构 — 结构化知识体系，覆盖：Knowledge Prism 方法论；Agent-First 架构模式与升级实践；多知识库注册与自动化管理。1 个视角、3 个分组，可按需检索。"
 version: 1.0.0
 metadata:
   openclaw:
@@ -12,7 +12,7 @@ metadata:
 
 # 知识地图
 
-> 3篇journal, 2个atoms, 2个groups, 1个视角
+> 4篇journal, 4个atoms, 3个groups, 1个视角
 
 ## 顶层观点
 
@@ -20,13 +20,15 @@ metadata:
 | ---- | -------- | ----------- | ---- |
 | S1 | Knowledge Prism 是一种将日常笔记转化为结构化知识的高效工作方法。 | G01 | 待验证 |
 | S2 | Agent-First 架构模式强调以 AI Agent 为中心，优化工具和项目能力的结构化调用。 | G02 | 待验证 |
+| S3 | 多知识库自动化管理通过注册表和定时处理，将插件能力从单库手动操作扩展到多库无人值守。 | G03 | 待验证 |
 
 ## 分组索引
 
 | 编号 | 观点句 | atom 数量 | 来源月份跨度 |
 | ---- | ------ | --------- | ------------ |
 | G01 | Knowledge Prism 是一种将日常笔记转化为结构化知识的高效工作方法。 | 15 | 2026-03 |
-| G02 | Agent-First 架构模式强调以 AI Agent 为中心，优化工具和项目能力的结构化调用。 | 34 | 2026-03 |
+| G02 | Agent-First 架构模式强调以 AI Agent 为中心，优化工具和项目能力的结构化调用。 | 45 | 2026-03 |
+| G03 | 多知识库注册与自动化管理是 Agent-First 插件生态在运维层面的自然延伸。 | 12 | 2026-03 |
 
 ## 视角索引
 

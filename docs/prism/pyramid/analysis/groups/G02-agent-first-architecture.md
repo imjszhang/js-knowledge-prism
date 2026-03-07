@@ -41,6 +41,18 @@
 | AF-33 | agent-first-architecture | 技能注册表是静态 JSON 而非 API 是因为它可托管在任何静态站，无需服务器，且构建时生成，不存在运行时一致性问题 |
 | AF-34 | agent-first-architecture | 五层架构速查表总结了每层的目录、面向对象和核心职责 |
 
+| AU-01 | agent-first-architecture-upgrade | js-knowledge-prism 从"CLI + Plugin"结构升级到完整 Agent-First 五层架构。 |
+| AU-02 | agent-first-architecture-upgrade | 分析 JS-Eyes 项目代码后归纳出五层架构模式，并将其系统文档化为可复用的架构蓝图。 |
+| AU-03 | agent-first-architecture-upgrade | 升级前 Layer 1-3 已成熟，缺少 Layer 4（开发工具链）、Layer 5（扩展技能）和基础设施。 |
+| AU-04 | agent-first-architecture-upgrade | Phase 1：新建开发 CLI（build/bump/commit/sync/release），实现多目标构建，用 `node:test` 建立 24 个测试用例。 |
+| AU-05 | agent-first-architecture-upgrade | 项目 `"type": "module"` 导致 `.js` 被当 ESM 处理，`require()` 报错；用 `.cjs` 扩展名解决。 |
+| AU-06 | agent-first-architecture-upgrade | Phase 2：创建 SKILL.md、安装脚本、CHANGELOG 等，形成完整分发闭环。 |
+| AU-07 | agent-first-architecture-upgrade | Phase 3：创建子技能 `prism-output-blog/`，主插件新增技能管理工具，构建系统自动生成 skills.json。 |
+| AU-08 | agent-first-architecture-upgrade | 开发 CLI 用 CJS 而非 ESM，是为避免与项目 ESM 模块冲突。 |
+| AU-09 | agent-first-architecture-upgrade | archiver 是唯一新增依赖，核心层保持零依赖。 |
+| AU-10 | agent-first-architecture-upgrade | 整个升级过程核心层完全零改动，验证了"核心逻辑写一次"的设计理念。 |
+| AU-11 | agent-first-architecture-upgrade | 将架构模式从具体代码中抽象为可复用蓝图，能降低新项目的摸索成本。 |
+
 ## 组内逻辑顺序
 
-Agent-First 架构的介绍遵循从架构理念到具体实现细节的顺序，首先是架构的基本概念和设计原则，然后是各层的具体功能和实现方式，最后是开发和部署过程中的工具和流程。
+Agent-First 架构的介绍遵循从架构理念到具体实现细节的顺序，首先是架构的基本概念和设计原则，然后是各层的具体功能和实现方式，接着是架构升级的实施过程和经验验证，最后是开发和部署过程中的工具和流程。

@@ -4,7 +4,7 @@
 
 版本规则见 [README — 版本管理](README.md#版本管理)。
 
-## V1.0.0 — {{date}}
+## V1.0.0 — 2026-03-01
 
 初始架构，由 js-knowledge-prism 工具生成。
 
