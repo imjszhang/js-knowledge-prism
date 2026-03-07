@@ -116,7 +116,9 @@ export default function register(api) {
 
   function getRegistryDir() {
     const workspace =
-      api.config?.agents?.defaults?.workspace || process.cwd();
+      api.config?.agents?.defaults?.workspace ||
+      api.config?.agents?.list?.[0]?.workspace ||
+      process.cwd();
     return join(workspace, ".openclaw", "prism-processor");
   }
 
