@@ -65,6 +65,21 @@
             "description": "cron 时区（IANA 格式）"
           }
         }
+      },
+      "memorySyncEnabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "是否启用知识库到 OpenClaw 记忆系统的自动同步"
+      },
+      "memorySyncDir": {
+        "type": "string",
+        "default": "",
+        "description": "记忆同步 Markdown 导出目录（留空则使用 work_dir/memory-export/）"
+      },
+      "memorySyncIntervalMinutes": {
+        "type": "number",
+        "default": 15,
+        "description": "定时同步间隔（分钟），设为 0 则仅在处理/注册时同步"
       }
     }
   },
@@ -104,6 +119,22 @@
       "label": "Cron 时区",
       "help": "IANA 时区标识，如 Asia/Shanghai",
       "placeholder": "Asia/Shanghai"
+    },
+    "memorySyncEnabled": {
+      "label": "启用记忆同步",
+      "help": "将知识库的 groups/synthesis/CONTEXT 导出到统一目录，供 OpenClaw memory_search 检索。需在 openclaw.json 中配置 memorySearch.extraPaths 指向导出目录。"
+    },
+    "memorySyncDir": {
+      "label": "记忆同步目录",
+      "placeholder": "work_dir/memory-export/",
+      "help": "Markdown 导出目录路径，留空使用默认位置。配置后需将此路径添加到 openclaw.json 的 agents.defaults.memorySearch.extraPaths 中。",
+      "advanced": true
+    },
+    "memorySyncIntervalMinutes": {
+      "label": "同步间隔（分钟）",
+      "placeholder": "15",
+      "help": "定时增量同步的间隔，设为 0 则仅在处理/注册操作时触发同步",
+      "advanced": true
     }
   }
 }

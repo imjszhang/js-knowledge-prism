@@ -111,6 +111,30 @@ export default function register(api) {
   }
 
   // ---------------------------------------------------------------------------
+  // Memory sync config & shared helper
+  // ---------------------------------------------------------------------------
+
+  const memorySyncEnabled = pluginCfg.memorySyncEnabled ?? true;
+  const memorySyncDir = pluginCfg.memorySyncDir
+    ? resolve(pluginCfg.memorySyncDir)
+    : join(PROJECT_ROOT, "work_dir", "memory-export");
+  const memorySyncIntervalMinutes = pluginCfg.memorySyncIntervalMinutes ?? 15;
+
+  /**
+   * Fire-and-forget incremental memory sync.
+   * Shared by background service, tool hooks, and CLI.
+   */
+  async function runPrismMemorySync({ force = false, logger } = {}) {
+    try {
+      const { syncPrismToMemory } = await import("../lib/memory-sync.mjs");
+      return syncPrismToMemory({ registryPath: getRegistryPath(), outputDir: memorySyncDir, force });
+    } catch (err) {
+      if (logger) logger.error(`[prism] memory sync failed: ${err.message}`);
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Registry helpers (multi-base registration for cron auto-processing)
   // ---------------------------------------------------------------------------
 
@@ -166,6 +190,44 @@ export default function register(api) {
       return "Knowledge Prism";
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Service: prism-memory-sync (background, enabled by default)
+  // ---------------------------------------------------------------------------
+
+  let memorySyncTimer = null;
+
+  api.registerService({
+    id: "prism-memory-sync",
+    async start(ctx) {
+      if (!memorySyncEnabled) {
+        ctx.logger.info("[prism] memorySyncEnabled=false, skipping memory sync service");
+        return;
+      }
+
+      ctx.logger.info(`[prism] Memory sync starting (dir=${memorySyncDir}, interval=${memorySyncIntervalMinutes}m)`);
+      const result = runPrismMemorySync({ logger: ctx.logger });
+      if (result) {
+        ctx.logger.info(`[prism] Initial sync done: ${result.synced} synced, ${result.deleted} deleted, ${result.total} total`);
+      }
+
+      if (memorySyncIntervalMinutes > 0) {
+        memorySyncTimer = setInterval(() => {
+          const r = runPrismMemorySync({ logger: ctx.logger });
+          if (r && (r.synced > 0 || r.deleted > 0)) {
+            ctx.logger.info(`[prism] Periodic sync: ${r.synced} synced, ${r.deleted} deleted`);
+          }
+        }, memorySyncIntervalMinutes * 60_000);
+      }
+    },
+    async stop(ctx) {
+      if (memorySyncTimer) {
+        clearInterval(memorySyncTimer);
+        memorySyncTimer = null;
+      }
+      ctx.logger.info("[prism] Memory sync service stopped");
+    },
+  });
 
   // ---------------------------------------------------------------------------
   // CLI commands: openclaw prism {init|process|status|new-perspective}
@@ -502,6 +564,25 @@ export default function register(api) {
             if (err.stderr) console.error(err.stderr);
           }
         });
+
+      // --- prism sync ---
+      prism
+        .command("sync")
+        .description("手动同步知识库到 OpenClaw 记忆系统（memory_search）")
+        .option("--force", "忽略增量缓存，全量重新导出")
+        .option("--dir <path>", "自定义导出目录（覆盖插件配置）")
+        .action(async (opts) => {
+          const outDir = opts.dir ? resolve(opts.dir) : memorySyncDir;
+          console.log(`\n  同步目标: ${outDir}`);
+          console.log(`  注册表: ${getRegistryPath()}\n`);
+          const result = runPrismMemorySync({ force: !!opts.force });
+          if (result) {
+            console.log(`  ✓ 同步完成`);
+            console.log(`    复制: ${result.synced}, 跳过: ${result.skipped}, 删除: ${result.deleted}, 总计: ${result.total}\n`);
+          } else {
+            console.error("  ✗ 同步失败，请检查注册表和知识库路径\n");
+          }
+        });
     },
     { commands: ["prism"] },
   );
@@ -564,6 +645,7 @@ export default function register(api) {
           parts.push("", "警告:", ...warnings.map((w) => `  - ${w}`));
         }
 
+        runPrismMemorySync({ logger: api.logger }).catch(() => {});
         return { content: [{ type: "text", text: parts.join("\n") }] };
       },
     },
@@ -940,6 +1022,7 @@ export default function register(api) {
           ...logs,
         ];
 
+        runPrismMemorySync({ logger: api.logger }).catch(() => {});
         return textResult(lines.join("\n"));
       },
     },
@@ -980,6 +1063,7 @@ export default function register(api) {
         if (idx >= 0) {
           registry.bases[idx].enabled = enabled;
           saveRegistry(registry);
+          runPrismMemorySync({ logger: api.logger }).catch(() => {});
           return textResult(
             `已更新: ${registry.bases[idx].name} → enabled=${enabled}`,
           );
@@ -1001,6 +1085,7 @@ export default function register(api) {
           lastSummary: null,
         });
         saveRegistry(registry);
+        runPrismMemorySync({ logger: api.logger }).catch(() => {});
         return textResult(`已注册: ${name} (${normalizeBaseDir(absDir)})`);
       },
     },
@@ -1033,6 +1118,7 @@ export default function register(api) {
         }
         const removed = registry.bases.splice(idx, 1)[0];
         saveRegistry(registry);
+        runPrismMemorySync({ logger: api.logger }).catch(() => {});
         return textResult(`已移除: ${removed.name} (${normalizeBaseDir(absDir)})`);
       },
     },
@@ -1210,6 +1296,7 @@ export default function register(api) {
           try {
             saveRegistry(registry);
           } catch { /* best-effort */ }
+          runPrismMemorySync({ logger: api.logger }).catch(() => {});
         }
 
         const disabledCount = registry.bases.length - enabledBases.length;
