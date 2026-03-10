@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-03-11
+
+### Added
+
+- **自动产出 Cron Job**：新增独立的 `prism-auto-output` 定时任务，定期检测 structure 目录变化并自动调用 LLM 生成 output 内容
+- **产出绑定管理**：通过 `outputBindings` 配置哪些视角+模板组合参与自动产出
+  - 新增 AI 工具 `knowledge_prism_bind_output`：绑定/禁用视角+模板的自动产出
+  - 新增 AI 工具 `knowledge_prism_list_output_bindings`：列出所有产出绑定及状态
+  - 新增 AI 工具 `knowledge_prism_output_all`：批量生成所有已绑定产出，含 mtime 变化检测
+- **CLI 命令 `prism setup-output-cron`**：一键配置产出定时任务（默认 120 分钟间隔）
+- **配置 schema 扩展**：`cron.outputInterval` 配置项，控制自动产出的执行间隔
+- **Registry 扩展**：`bases[].outputBindings` 数组，存储产出绑定元数据（perspectiveDir、template、enabled、lastOutputAt）
+
+### Changed
+
+- `knowledge_prism_register` 新注册条目自动包含空 `outputBindings` 数组，兼容旧 registry 数据
+- `prism-processor` 技能文档（SKILL.md）更新至 v1.1.0，新增产出绑定管理和定时产出流程章节
+
 ## [1.1.0] - 2026-03-10
 
 ### Added

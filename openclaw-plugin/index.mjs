@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, createReadStream } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, createReadStream, readdirSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { execSync, execFileSync } from "node:child_process";
@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createHttpCaller, runPipeline } from "../lib/process.mjs";
 import { getStatus } from "../lib/status.mjs";
 import { listTemplates, loadTemplate, runOutput } from "../lib/output.mjs";
+import { makePaths, listPerspectiveDirs } from "../lib/utils.mjs";
 import { extractGraph, analyzeGraph, generateGraphHtml, filterByPerspective } from "../lib/graph.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -550,6 +551,78 @@ export default function register(api) {
               "--tz", opts.tz,
               "--session", "isolated",
               "--message", "执行 prism-processor 技能的定时处理流程：检查并处理所有已注册知识库。",
+              "--thinking", "minimal",
+              "--json",
+            ]);
+
+            const job = JSON.parse(result);
+            console.log(`\n  ✓ 定时任务已创建`);
+            console.log(`    名称: ${job.name}`);
+            console.log(`    ID:   ${job.id}`);
+            console.log(`    调度: 每 ${minutes} 分钟`);
+            console.log(`    时区: ${opts.tz}\n`);
+          } catch (err) {
+            console.error(`  配置失败: ${err.message}`);
+            if (err.stderr) console.error(err.stderr);
+          }
+        });
+
+      // --- prism setup-output-cron ---
+      prism
+        .command("setup-output-cron")
+        .description("配置知识棱镜的 output 定时任务（定时批量生成所有已绑定的产出）")
+        .option("--every <minutes>", "执行间隔（分钟）", String(pluginCfg.cron?.outputInterval ?? 120))
+        .option("--tz <timezone>", "时区（IANA）", pluginCfg.cron?.timezone ?? "Asia/Shanghai")
+        .option("--remove", "移除定时任务")
+        .action(async (opts) => {
+          const JOB_NAME = "prism-auto-output";
+          const openclawBin = process.argv[0];
+          const openclawEntry = process.argv[1];
+
+          function runOcCron(args) {
+            return execFileSync(openclawBin, [openclawEntry, "cron", ...args], {
+              encoding: "utf-8",
+              timeout: 30_000,
+            }).trim();
+          }
+
+          try {
+            if (opts.remove) {
+              const listJson = runOcCron(["list", "--json"]);
+              const { jobs } = JSON.parse(listJson);
+              const existing = jobs.find((j) => j.name === JOB_NAME);
+              if (!existing) {
+                console.log(`\n  未找到名为 "${JOB_NAME}" 的定时任务，无需移除。\n`);
+                return;
+              }
+              runOcCron(["rm", existing.id]);
+              console.log(`\n  ✓ 已移除定时任务 "${JOB_NAME}" (${existing.id})\n`);
+              return;
+            }
+
+            const listJson = runOcCron(["list", "--json"]);
+            const { jobs } = JSON.parse(listJson);
+            const existing = jobs.find((j) => j.name === JOB_NAME);
+            if (existing) {
+              console.log(`\n  定时任务 "${JOB_NAME}" 已存在 (${existing.id})。`);
+              console.log(`  如需重新配置，请先执行: openclaw prism setup-output-cron --remove\n`);
+              return;
+            }
+
+            const minutes = parseInt(opts.every, 10);
+            if (isNaN(minutes) || minutes < 1) {
+              console.error("  错误: --every 必须为正整数（分钟）");
+              return;
+            }
+
+            const cronExpr = `*/${minutes} * * * *`;
+            const result = runOcCron([
+              "add",
+              "--name", JOB_NAME,
+              "--cron", cronExpr,
+              "--tz", opts.tz,
+              "--session", "isolated",
+              "--message", "执行知识棱镜的自动产出流程：检测 structure 变化并生成 output 内容。",
               "--thinking", "minimal",
               "--json",
             ]);
@@ -1224,6 +1297,7 @@ export default function register(api) {
           enabled,
           lastProcessedAt: null,
           lastSummary: null,
+          outputBindings: [],
         });
         saveRegistry(registry);
         runPrismMemorySync({ logger: api.logger }).catch(() => {});
@@ -1454,6 +1528,340 @@ export default function register(api) {
             r.status === "dry-run" ? "👁" :
             "✗";
           lines.push(`${icon} ${r.name}`);
+          lines.push(`  ${r.message}`);
+          lines.push("");
+        }
+
+        return textResult(lines.join("\n"));
+      },
+    },
+    { optional: true },
+  );
+
+  // ---------------------------------------------------------------------------
+  // AI Tools: knowledge_prism_bind_output / list_output_bindings / output_all
+  // ---------------------------------------------------------------------------
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_bind_output",
+      label: "Knowledge Prism: Bind Output",
+      description:
+        "为已注册知识库绑定一对 视角+模板 的自动产出配置。绑定后 cron 定时任务会自动检测 structure 变化并生成 output。" +
+        "传入 enabled=false 可暂停自动产出而不移除绑定。重复绑定相同 perspectiveDir+template 只更新 enabled 状态。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "已注册的知识库根目录路径。省略则使用插件配置的默认值。",
+          },
+          perspectiveDir: {
+            type: "string",
+            description: "视角目录名，如 P01-practice-diary",
+          },
+          template: {
+            type: "string",
+            description: "输出模板名，如 practice-diary, blog",
+          },
+          enabled: {
+            type: "boolean",
+            description: "是否启用自动产出。默认 true。传 false 可暂停。",
+          },
+        },
+        required: ["perspectiveDir", "template"],
+      },
+      async execute(_toolCallId, params) {
+        const baseDir = params.baseDir || resolveBaseDir();
+        const absDir = resolve(baseDir);
+        const registry = loadRegistry();
+        const idx = findBaseIndex(registry, absDir);
+
+        if (idx < 0) {
+          return textResult(
+            `错误: 知识库 ${normalizeBaseDir(absDir)} 未注册。请先使用 knowledge_prism_register 注册。`,
+          );
+        }
+
+        const paths = makePaths(absDir);
+        const perspPath = join(paths.structureDir, params.perspectiveDir);
+        if (!existsSync(perspPath)) {
+          const available = listPerspectiveDirs(paths.structureDir);
+          return textResult(
+            `错误: 视角目录不存在: ${params.perspectiveDir}\n可用视角: ${available.join(", ") || "无"}`,
+          );
+        }
+
+        const tpl = loadTemplate(params.template, absDir);
+        if (!tpl) {
+          const available = listTemplates(absDir).map((t) => t.name);
+          return textResult(
+            `错误: 模板 "${params.template}" 未找到。可用模板: ${available.join(", ") || "无"}`,
+          );
+        }
+
+        const base = registry.bases[idx];
+        if (!base.outputBindings) base.outputBindings = [];
+
+        const enabled = params.enabled ?? true;
+        const existing = base.outputBindings.find(
+          (b) => b.perspectiveDir === params.perspectiveDir && b.template === params.template,
+        );
+
+        if (existing) {
+          existing.enabled = enabled;
+          saveRegistry(registry);
+          return textResult(
+            `已更新绑定: ${params.perspectiveDir} + ${params.template} → enabled=${enabled}`,
+          );
+        }
+
+        base.outputBindings.push({
+          perspectiveDir: params.perspectiveDir,
+          template: params.template,
+          enabled,
+          lastOutputAt: null,
+          lastOutputSummary: null,
+        });
+        saveRegistry(registry);
+        return textResult(
+          `已绑定: ${base.name} — ${params.perspectiveDir} + ${params.template}`,
+        );
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_list_output_bindings",
+      label: "Knowledge Prism: List Output Bindings",
+      description:
+        "列出已注册知识库的自动产出绑定配置。可指定某个知识库，或省略列出全部。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录路径。省略则列出所有已注册知识库的绑定。",
+          },
+        },
+      },
+      async execute(_toolCallId, params) {
+        const registry = loadRegistry();
+        let targets = registry.bases;
+
+        if (params.baseDir) {
+          const absDir = resolve(params.baseDir);
+          const idx = findBaseIndex(registry, absDir);
+          if (idx < 0) {
+            return textResult(`知识库未注册: ${normalizeBaseDir(absDir)}`);
+          }
+          targets = [registry.bases[idx]];
+        }
+
+        if (targets.length === 0) {
+          return textResult("尚未注册任何知识库。");
+        }
+
+        const lines = [];
+        let totalBindings = 0;
+
+        for (const base of targets) {
+          const bindings = base.outputBindings || [];
+          totalBindings += bindings.length;
+          lines.push(`**${base.name}** (${normalizeBaseDir(base.baseDir)})`);
+
+          if (bindings.length === 0) {
+            lines.push("  无产出绑定");
+          } else {
+            for (const b of bindings) {
+              const flag = b.enabled ? "启用" : "禁用";
+              const lastTs = b.lastOutputAt
+                ? b.lastOutputAt.replace("T", " ").slice(0, 16)
+                : "从未";
+              lines.push(`  - ${b.perspectiveDir} + ${b.template} [${flag}]`);
+              lines.push(`    上次产出: ${lastTs}`);
+              if (b.lastOutputSummary) lines.push(`    摘要: ${b.lastOutputSummary}`);
+            }
+          }
+          lines.push("");
+        }
+
+        const header = `产出绑定汇总（${targets.length} 个知识库，${totalBindings} 个绑定）\n`;
+        return textResult(header + lines.join("\n"));
+      },
+    },
+    { optional: true },
+  );
+
+  /**
+   * Recursively find the latest mtime under a directory tree.
+   * Returns epoch ms, or 0 if dir doesn't exist.
+   */
+  function getLatestMtime(dir) {
+    if (!existsSync(dir)) return 0;
+    let latest = 0;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        latest = Math.max(latest, getLatestMtime(full));
+      } else {
+        latest = Math.max(latest, statSync(full).mtimeMs);
+      }
+    }
+    return latest;
+  }
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_output_all",
+      label: "Knowledge Prism: Output All Bindings",
+      description:
+        "批量生成所有已注册知识库中启用的产出绑定。检测 structure 目录是否有变化，" +
+        "对有变化的绑定调用 LLM 生成 output 内容。单个绑定失败不影响其他绑定。",
+      parameters: {
+        type: "object",
+        properties: {
+          dryRun: {
+            type: "boolean",
+            description: "只检查各绑定状态，不实际生成。默认 false。",
+          },
+          force: {
+            type: "boolean",
+            description: "覆盖已存在的非骨架文件。默认 false。",
+          },
+        },
+      },
+      async execute(_toolCallId, params) {
+        const registry = loadRegistry();
+        const enabledBases = registry.bases.filter((b) => b.enabled);
+
+        if (enabledBases.length === 0) {
+          return textResult(
+            "未注册任何启用的知识库。请先使用 knowledge_prism_register 注册。",
+          );
+        }
+
+        const dryRun = params.dryRun ?? false;
+        const force = params.force ?? false;
+        const results = [];
+
+        for (const base of enabledBases) {
+          const bindings = (base.outputBindings || []).filter((b) => b.enabled);
+          if (bindings.length === 0) continue;
+
+          if (!existsSync(join(base.baseDir, ".knowledgeprism.json"))) {
+            results.push({
+              name: base.name,
+              binding: "(全部)",
+              status: "error",
+              message: "路径无效或未初始化",
+            });
+            continue;
+          }
+
+          const paths = makePaths(base.baseDir);
+
+          for (const binding of bindings) {
+            const entry = {
+              name: base.name,
+              binding: `${binding.perspectiveDir} + ${binding.template}`,
+            };
+
+            const perspPath = join(paths.structureDir, binding.perspectiveDir);
+            if (!existsSync(perspPath)) {
+              entry.status = "error";
+              entry.message = `视角目录不存在: ${binding.perspectiveDir}`;
+              results.push(entry);
+              continue;
+            }
+
+            const tpl = loadTemplate(binding.template, base.baseDir);
+            if (!tpl) {
+              entry.status = "error";
+              entry.message = `模板不存在: ${binding.template}`;
+              results.push(entry);
+              continue;
+            }
+
+            const latestMtime = getLatestMtime(perspPath);
+            const lastOutputMs = binding.lastOutputAt
+              ? new Date(binding.lastOutputAt).getTime()
+              : 0;
+
+            if (latestMtime <= lastOutputMs) {
+              entry.status = "skipped";
+              entry.message = "structure 无变化";
+              results.push(entry);
+              continue;
+            }
+
+            if (dryRun) {
+              entry.status = "dry-run";
+              entry.message = "检测到 structure 变化，待生成";
+              results.push(entry);
+              continue;
+            }
+
+            try {
+              const result = await runOutput({
+                baseDir: base.baseDir,
+                perspectiveDir: binding.perspectiveDir,
+                template: binding.template,
+                mode: "generate",
+                autoWrite: true,
+                dryRun: false,
+                force,
+                callAgent: buildCallAgent(),
+                log: (msg) => api.logger.info(`[${base.name}] ${msg}`),
+                warn: (msg) => api.logger.warn(`[${base.name}] ${msg}`),
+              });
+
+              if (result.success) {
+                const generated = result.results
+                  ? result.results.filter((r) => r.status === "written" || r.status === "created").length
+                  : 0;
+                const skipped = result.results
+                  ? result.results.filter((r) => r.status === "exists").length
+                  : 0;
+                entry.status = "generated";
+                entry.message =
+                  `${result.message}` +
+                  (generated ? ` (生成: ${generated}` + (skipped ? `, 跳过: ${skipped})` : ")") : "");
+                binding.lastOutputAt = new Date().toISOString();
+                binding.lastOutputSummary = entry.message;
+              } else {
+                entry.status = "error";
+                entry.message = result.message || "生成失败";
+              }
+            } catch (err) {
+              entry.status = "error";
+              entry.message = err.message?.slice(0, 200);
+            }
+
+            results.push(entry);
+          }
+        }
+
+        if (!dryRun) {
+          try {
+            saveRegistry(registry);
+          } catch { /* best-effort */ }
+        }
+
+        if (results.length === 0) {
+          return textResult("所有已注册知识库均无启用的产出绑定。使用 knowledge_prism_bind_output 添加绑定。");
+        }
+
+        const lines = [`自动产出完毕（${results.length} 个绑定）`, ""];
+        for (const r of results) {
+          const icon =
+            r.status === "generated" ? "✓" :
+            r.status === "skipped" ? "—" :
+            r.status === "dry-run" ? "👁" :
+            "✗";
+          lines.push(`${icon} ${r.name} | ${r.binding}`);
           lines.push(`  ${r.message}`);
           lines.push("");
         }

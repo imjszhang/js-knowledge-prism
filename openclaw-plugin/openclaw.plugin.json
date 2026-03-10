@@ -60,6 +60,10 @@
             "type": "number",
             "description": "自动处理的默认间隔（分钟）"
           },
+          "outputInterval": {
+            "type": "number",
+            "description": "自动产出生成的默认间隔（分钟）"
+          },
           "timezone": {
             "type": "string",
             "description": "cron 时区（IANA 格式）"
@@ -114,6 +118,11 @@
       "label": "自动处理间隔",
       "help": "定时处理所有注册知识库的间隔（分钟）",
       "placeholder": "60"
+    },
+    "cron.outputInterval": {
+      "label": "自动产出间隔",
+      "help": "定时生成所有已绑定产出的间隔（分钟），默认 120",
+      "placeholder": "120"
     },
     "cron.timezone": {
       "label": "Cron 时区",
