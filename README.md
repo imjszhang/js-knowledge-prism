@@ -86,6 +86,23 @@ npx js-knowledge-prism process --file x.md  # 只处理指定 journal
 npx js-knowledge-prism status
 ```
 
+### `graph`
+
+生成交互式 3D 知识图谱可视化 HTML。
+
+```bash
+npx js-knowledge-prism graph                   # 在当前知识库生成图谱
+npx js-knowledge-prism graph --base-dir ./docs  # 指定知识库目录
+npx js-knowledge-prism graph --open             # 生成后自动打开浏览器
+```
+
+生成的 HTML 为自包含单文件，支持：
+
+- **3D 交互**：鼠标旋转、平移、缩放，金字塔层级布局
+- **搜索与过滤**：按关键词搜索节点，按文档类型过滤图层
+- **溯源高亮**：点击节点高亮完整引用链（journal → output）
+- **详情面板**：查看节点元信息与引用关系，点击可导航到关联节点
+
 ### `new-perspective <slug>`
 
 从模板创建新的金字塔视角。
