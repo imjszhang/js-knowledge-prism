@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knowledge Prism · 知识图谱</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0a0e17;
+    --bg-panel: #111827;
+    --bg-card: #1a2332;
+    --border: #1e2d3d;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --text-muted: #475569;
+    --journal: #3b82f6;
+    --journal-bg: rgba(59,130,246,0.12);
+    --atom: #10b981;
+    --atom-bg: rgba(16,185,129,0.12);
+    --group: #f59e0b;
+    --group-bg: rgba(245,158,11,0.12);
+    --synthesis: #ef4444;
+    --synthesis-bg: rgba(239,68,68,0.12);
+    --perspective: #a855f7;
+    --perspective-bg: rgba(168,85,247,0.12);
+    --output: #eab308;
+    --output-bg: rgba(234,179,8,0.12);
+    --accent: #38bdf8;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Noto Sans SC', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  #app { display:flex; height:100vh; width:100vw; }
+
+  /* ── Left Panel ── */
+  .sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+  }
+  .sidebar-header {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    background: linear-gradient(135deg, #38bdf8, #a855f7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .sidebar-header p {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-card {
+    background: var(--bg-card);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+  .stat-card:hover { border-color: var(--border); transform: translateY(-1px); }
+  .stat-card.active { border-color: var(--accent); }
+  .stat-card .num { font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700; }
+  .stat-card .label { font-size:11px; color:var(--text-dim); margin-top:2px; }
+
+  .filter-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-section h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .filter-chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip {
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    user-select: none;
+  }
+  .chip.active { color: #fff; }
+  .chip[data-type="journal"].active { background:var(--journal-bg); border-color:var(--journal); color:var(--journal); }
+  .chip[data-type="atom"].active { background:var(--atom-bg); border-color:var(--atom); color:var(--atom); }
+  .chip[data-type="group"].active { background:var(--group-bg); border-color:var(--group); color:var(--group); }
+  .chip[data-type="synthesis"].active { background:var(--synthesis-bg); border-color:var(--synthesis); color:var(--synthesis); }
+  .chip[data-type="perspective"].active { background:var(--perspective-bg); border-color:var(--perspective); color:var(--perspective); }
+  .chip[data-type="output"].active { background:var(--output-bg); border-color:var(--output); color:var(--output); }
+
+  .legend {
+    padding: 16px 20px;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .legend h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink:0;
+  }
+  .legend-line {
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    color: var(--text-dim);
+  }
+  .legend-line .line-sample {
+    width: 30px; height: 2px; flex-shrink: 0; border-radius: 1px;
+  }
+
+  .sidebar-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  /* ── Main Graph ── */
+  .main {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  #graph { width:100%; height:100%; }
+
+  .graph-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 6px;
+  }
+  .ctrl-btn {
+    width: 36px; height: 36px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: all 0.15s;
+  }
+  .ctrl-btn:hover { background:var(--bg-card); color:var(--text); }
+  .ctrl-btn svg { width:18px; height:18px; }
+
+  /* ── Right Detail Panel ── */
+  .detail-panel {
+    width: 320px;
+    min-width: 320px;
+    background: var(--bg-panel);
+    border-left: 1px solid var(--border);
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .detail-panel.open { transform: translateX(0); }
+  .detail-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  .detail-header .close-btn {
+    background: none; border: none; color: var(--text-dim);
+    cursor: pointer; font-size: 20px; line-height: 1;
+    padding: 4px; border-radius: 4px;
+  }
+  .detail-header .close-btn:hover { color:var(--text); background:var(--bg-card); }
+  .detail-type-badge {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-weight: 500;
+    display: inline-block;
+    margin-bottom: 8px;
+  }
+  .detail-title { font-size:16px; font-weight:600; line-height:1.4; }
+  .detail-path {
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    color:var(--text-muted);
+    margin-top:4px;
+    word-break:break-all;
+  }
+  .detail-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .detail-section h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .ref-list { list-style:none; }
+  .ref-list li {
+    padding: 8px 10px;
+    margin-bottom: 4px;
+    background: var(--bg-card);
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ref-list li:hover { background: var(--bg); }
+  .ref-list li .ref-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .ref-list li .ref-name { flex:1; }
+  .ref-list li .ref-arrow { color:var(--text-muted); font-size:11px; }
+
+  .detail-meta { display:flex; flex-direction:column; gap: 8px; }
+  .meta-row { display:flex; justify-content:space-between; font-size:13px; }
+  .meta-row .meta-label { color:var(--text-muted); }
+  .meta-row .meta-value { color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12px; }
+
+  /* ── Tooltip ── */
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+    max-width: 260px;
+  }
+  .tooltip.visible { opacity:1; }
+  .tooltip .tt-type { font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
+  .tooltip .tt-name { font-weight:600; font-size:14px; }
+  .tooltip .tt-path { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-muted); margin-top:4px; }
+
+  /* ── Search ── */
+  .search-box {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-box input {
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px 8px 34px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 10px center;
+  }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box input::placeholder { color: var(--text-muted); }
+
+  /* Orphan warning */
+  .orphan-banner {
+    margin: 0 20px 12px;
+    padding: 10px 14px;
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.2);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--group);
+    display: none;
+  }
+  .orphan-banner.show { display:block; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Left Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>Knowledge Prism</h1>
+      <p>知识图谱 · 文档关系可视化</p>
+    </div>
+
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="搜索节点..." />
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card" data-filter="all">
+        <div class="num" id="stat-total">0</div>
+        <div class="label">全部节点</div>
+      </div>
+      <div class="stat-card" data-filter="links">
+        <div class="num" id="stat-links">0</div>
+        <div class="label">引用关系</div>
+      </div>
+      <div class="stat-card" data-filter="orphan">
+        <div class="num" id="stat-orphan">0</div>
+        <div class="label">孤立节点</div>
+      </div>
+      <div class="stat-card" data-filter="coverage">
+        <div class="num" id="stat-coverage">0%</div>
+        <div class="label">覆盖率</div>
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <h3>图层过滤</h3>
+      <div class="filter-chips" id="filterChips">
+        <span class="chip active" data-type="journal">Journal</span>
+        <span class="chip active" data-type="atom">Atoms</span>
+        <span class="chip active" data-type="group">Groups</span>
+        <span class="chip active" data-type="synthesis">Synthesis</span>
+        <span class="chip active" data-type="perspective">视角</span>
+        <span class="chip active" data-type="output">Outputs</span>
+      </div>
+    </div>
+
+    <div class="legend">
+      <h3>节点类型</h3>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--journal)"></span> Journal · 原始笔记</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--atom)"></span> Atom · 信息单元</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--group)"></span> Group · 主题分组</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--synthesis)"></span> Synthesis · 顶层观点</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--perspective)"></span> Perspective · 视角</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--output)"></span> Output · 产出文章</div>
+
+      <h3 style="margin-top:16px">连线含义</h3>
+      <div class="legend-line"><span class="line-sample" style="background:var(--atom)"></span> 提取自（journal→atom）</div>
+      <div class="legend-line"><span class="line-sample" style="background:var(--group)"></span> 归类至（atom→group）</div>
+      <div class="legend-line"><span class="line-sample" style="background:var(--synthesis)"></span> 支撑（group→synthesis）</div>
+      <div class="legend-line"><span class="line-sample" style="background:var(--perspective)"></span> 构建（synthesis→视角）</div>
+      <div class="legend-line"><span class="line-sample" style="background:var(--output)"></span> 产出（视角→output）</div>
+
+      <div class="orphan-banner" id="orphanBanner">
+        发现 <strong id="orphanCount">0</strong> 个孤立节点，建议检查引用完整性
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      Knowledge Prism Graph · Demo · 2026-03-10
+    </div>
+  </aside>
+
+  <!-- Main Graph Area -->
+  <div class="main">
+    <svg id="graph"></svg>
+    <div class="graph-controls">
+      <button class="ctrl-btn" id="zoomIn" title="放大">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+      </button>
+      <button class="ctrl-btn" id="zoomOut" title="缩小">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+      </button>
+      <button class="ctrl-btn" id="zoomReset" title="重置视图">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      </button>
+      <button class="ctrl-btn" id="toggleLabels" title="切换标签">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+      </button>
+      <button class="ctrl-btn" id="toggleForce" title="暂停/恢复力模拟">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>
+      </button>
+    </div>
+    <div class="tooltip" id="tooltip">
+      <div class="tt-type"></div>
+      <div class="tt-name"></div>
+      <div class="tt-path"></div>
+    </div>
+  </div>
+
+  <!-- Right Detail Panel -->
+  <aside class="detail-panel" id="detailPanel">
+    <div class="detail-header">
+      <div>
+        <div class="detail-type-badge" id="detailBadge"></div>
+        <div class="detail-title" id="detailTitle"></div>
+        <div class="detail-path" id="detailPath"></div>
+      </div>
+      <button class="close-btn" id="closeDetail">&times;</button>
+    </div>
+    <div class="detail-section">
+      <h4>文档信息</h4>
+      <div class="detail-meta" id="detailMeta"></div>
+    </div>
+    <div class="detail-section">
+      <h4>被引用 (Incoming)</h4>
+      <ul class="ref-list" id="detailIncoming"></ul>
+    </div>
+    <div class="detail-section">
+      <h4>引用 (Outgoing)</h4>
+      <ul class="ref-list" id="detailOutgoing"></ul>
+    </div>
+  </aside>
+</div>
+
+<script src="./d3.min.js"></script>
+<script>
+// ── Mock Data ──
+const typeColors = {
+  journal: '#3b82f6', atom: '#10b981', group: '#f59e0b',
+  synthesis: '#ef4444', perspective: '#a855f7', output: '#eab308'
+};
+const typeLabels = {
+  journal: 'Journal', atom: 'Atom', group: 'Group',
+  synthesis: 'Synthesis', perspective: '视角', output: 'Output'
+};
+const typeSizes = {
+  journal: 6, atom: 5, group: 8, synthesis: 12, perspective: 10, output: 9
+};
+
+const nodes = [
+  // Journals
+  { id:'j1', name:'2026-01-15 Vite源码阅读', type:'journal', path:'journal/2026-01-15/vite-source.md', date:'2026-01-15' },
+  { id:'j2', name:'2026-01-18 HMR机制探索', type:'journal', path:'journal/2026-01-18/hmr-explore.md', date:'2026-01-18' },
+  { id:'j3', name:'2026-01-22 ESBuild性能', type:'journal', path:'journal/2026-01-22/esbuild-perf.md', date:'2026-01-22' },
+  { id:'j4', name:'2026-02-01 Rollup插件系统', type:'journal', path:'journal/2026-02-01/rollup-plugins.md', date:'2026-02-01' },
+  { id:'j5', name:'2026-02-05 依赖预构建', type:'journal', path:'journal/2026-02-05/dep-prebundle.md', date:'2026-02-05' },
+  { id:'j6', name:'2026-02-10 CSS处理流程', type:'journal', path:'journal/2026-02-10/css-pipeline.md', date:'2026-02-10' },
+  { id:'j7', name:'2026-02-15 SSR实践', type:'journal', path:'journal/2026-02-15/ssr-practice.md', date:'2026-02-15' },
+  { id:'j8', name:'2026-02-20 Monorepo构建', type:'journal', path:'journal/2026-02-20/monorepo-build.md', date:'2026-02-20' },
+
+  // Atoms
+  { id:'a1', name:'VS-01 Vite dev server启动流程', type:'atom', path:'pyramid/analysis/atoms/2026-01/VS-01.md', atomType:'步骤' },
+  { id:'a2', name:'VS-02 模块依赖图构建', type:'atom', path:'pyramid/analysis/atoms/2026-01/VS-02.md', atomType:'事实' },
+  { id:'a3', name:'HM-01 HMR边界检测算法', type:'atom', path:'pyramid/analysis/atoms/2026-01/HM-01.md', atomType:'事实' },
+  { id:'a4', name:'HM-02 热更新传播链', type:'atom', path:'pyramid/analysis/atoms/2026-01/HM-02.md', atomType:'步骤' },
+  { id:'a5', name:'EB-01 ESBuild转译速度对比', type:'atom', path:'pyramid/analysis/atoms/2026-01/EB-01.md', atomType:'事实' },
+  { id:'a6', name:'EB-02 Go并发模型优势', type:'atom', path:'pyramid/analysis/atoms/2026-01/EB-02.md', atomType:'判断' },
+  { id:'a7', name:'RP-01 Rollup插件钩子生命周期', type:'atom', path:'pyramid/analysis/atoms/2026-02/RP-01.md', atomType:'步骤' },
+  { id:'a8', name:'RP-02 虚拟模块模式', type:'atom', path:'pyramid/analysis/atoms/2026-02/RP-02.md', atomType:'经验' },
+  { id:'a9', name:'DP-01 依赖扫描策略', type:'atom', path:'pyramid/analysis/atoms/2026-02/DP-01.md', atomType:'事实' },
+  { id:'a10', name:'DP-02 预构建缓存机制', type:'atom', path:'pyramid/analysis/atoms/2026-02/DP-02.md', atomType:'步骤' },
+  { id:'a11', name:'CS-01 PostCSS集成方式', type:'atom', path:'pyramid/analysis/atoms/2026-02/CS-01.md', atomType:'事实' },
+  { id:'a12', name:'SS-01 SSR入口处理', type:'atom', path:'pyramid/analysis/atoms/2026-02/SS-01.md', atomType:'步骤' },
+  { id:'a13', name:'MR-01 Workspace依赖解析', type:'atom', path:'pyramid/analysis/atoms/2026-02/MR-01.md', atomType:'经验' },
+
+  // Groups
+  { id:'g1', name:'G01-开发服务器核心机制', type:'group', path:'pyramid/analysis/groups/G01-dev-server.md', atomCount:4 },
+  { id:'g2', name:'G02-构建工具链对比', type:'group', path:'pyramid/analysis/groups/G02-build-tools.md', atomCount:3 },
+  { id:'g3', name:'G03-插件系统设计', type:'group', path:'pyramid/analysis/groups/G03-plugin-system.md', atomCount:3 },
+  { id:'g4', name:'G04-工程化实践', type:'group', path:'pyramid/analysis/groups/G04-engineering.md', atomCount:4 },
+
+  // Synthesis
+  { id:'s1', name:'S1 Vite的核心竞争力在于开发体验', type:'synthesis', path:'pyramid/analysis/synthesis.md#S1', confidence:'高' },
+  { id:'s2', name:'S2 插件系统是生态繁荣的关键', type:'synthesis', path:'pyramid/analysis/synthesis.md#S2', confidence:'高' },
+  { id:'s3', name:'S3 预构建是性能与兼容的平衡', type:'synthesis', path:'pyramid/analysis/synthesis.md#S3', confidence:'中' },
+
+  // Perspectives
+  { id:'p1', name:'P01-Vite架构深度解析', type:'perspective', path:'pyramid/structure/P01-vite-arch/', keyLines:5 },
+  { id:'p2', name:'P02-从Webpack迁移到Vite', type:'perspective', path:'pyramid/structure/P02-webpack-to-vite/', keyLines:4 },
+
+  // Outputs
+  { id:'o1', name:'Vite内部原理：从源码到实践', type:'output', path:'outputs/blog/vite-internals.md', format:'blog' },
+  { id:'o2', name:'迁移指南：Webpack→Vite', type:'output', path:'outputs/blog/migration-guide.md', format:'blog' },
+  { id:'o3', name:'Vite插件开发实战', type:'output', path:'outputs/practice-diary/plugin-dev.md', format:'practice-diary' },
+];
+
+const links = [
+  // journal → atom
+  { source:'j1', target:'a1', type:'extract' },
+  { source:'j1', target:'a2', type:'extract' },
+  { source:'j2', target:'a3', type:'extract' },
+  { source:'j2', target:'a4', type:'extract' },
+  { source:'j3', target:'a5', type:'extract' },
+  { source:'j3', target:'a6', type:'extract' },
+  { source:'j4', target:'a7', type:'extract' },
+  { source:'j4', target:'a8', type:'extract' },
+  { source:'j5', target:'a9', type:'extract' },
+  { source:'j5', target:'a10', type:'extract' },
+  { source:'j6', target:'a11', type:'extract' },
+  { source:'j7', target:'a12', type:'extract' },
+  { source:'j8', target:'a13', type:'extract' },
+
+  // atom → group
+  { source:'a1', target:'g1', type:'classify' },
+  { source:'a2', target:'g1', type:'classify' },
+  { source:'a3', target:'g1', type:'classify' },
+  { source:'a4', target:'g1', type:'classify' },
+  { source:'a5', target:'g2', type:'classify' },
+  { source:'a6', target:'g2', type:'classify' },
+  { source:'a9', target:'g2', type:'classify' },
+  { source:'a7', target:'g3', type:'classify' },
+  { source:'a8', target:'g3', type:'classify' },
+  { source:'a11', target:'g3', type:'classify' },
+  { source:'a10', target:'g4', type:'classify' },
+  { source:'a12', target:'g4', type:'classify' },
+  { source:'a13', target:'g4', type:'classify' },
+  { source:'a11', target:'g4', type:'classify' },
+
+  // group → synthesis
+  { source:'g1', target:'s1', type:'support' },
+  { source:'g2', target:'s1', type:'support' },
+  { source:'g3', target:'s2', type:'support' },
+  { source:'g2', target:'s3', type:'support' },
+  { source:'g4', target:'s3', type:'support' },
+
+  // synthesis → perspective
+  { source:'s1', target:'p1', type:'structure' },
+  { source:'s2', target:'p1', type:'structure' },
+  { source:'s3', target:'p1', type:'structure' },
+  { source:'s1', target:'p2', type:'structure' },
+  { source:'s3', target:'p2', type:'structure' },
+
+  // perspective → output
+  { source:'p1', target:'o1', type:'produce' },
+  { source:'p2', target:'o2', type:'produce' },
+  { source:'p1', target:'o3', type:'produce' },
+  { source:'g3', target:'o3', type:'produce' },
+];
+
+const linkTypeColors = {
+  extract: typeColors.atom,
+  classify: typeColors.group,
+  support: typeColors.synthesis,
+  structure: typeColors.perspective,
+  produce: typeColors.output,
+};
+
+// ── Setup ──
+const svg = d3.select('#graph');
+const width = document.querySelector('.main').clientWidth;
+const height = document.querySelector('.main').clientHeight;
+svg.attr('width', width).attr('height', height);
+
+const g = svg.append('g');
+
+const zoom = d3.zoom()
+  .scaleExtent([0.2, 4])
+  .on('zoom', e => g.attr('transform', e.transform));
+svg.call(zoom);
+
+// Arrow markers
+const defs = svg.append('defs');
+Object.entries(linkTypeColors).forEach(([type, color]) => {
+  defs.append('marker')
+    .attr('id', `arrow-${type}`)
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 20).attr('refY', 0)
+    .attr('markerWidth', 6).attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-4L10,0L0,4')
+    .attr('fill', color)
+    .attr('opacity', 0.6);
+});
+
+// ── Simulation ──
+const simulation = d3.forceSimulation(nodes)
+  .force('link', d3.forceLink(links).id(d => d.id).distance(d => {
+    const s = d.source.type || d.source;
+    const t = d.target.type || d.target;
+    if (s === 'journal' && t === 'atom') return 60;
+    if (s === 'atom' && t === 'group') return 70;
+    return 90;
+  }))
+  .force('charge', d3.forceManyBody().strength(-180))
+  .force('center', d3.forceCenter(width / 2, height / 2))
+  .force('y', d3.forceY(d => {
+    const layers = { journal: 0.85, atom: 0.68, group: 0.50, synthesis: 0.33, perspective: 0.18, output: 0.05 };
+    return height * (layers[d.type] || 0.5);
+  }).strength(0.3))
+  .force('collision', d3.forceCollide(d => typeSizes[d.type] + 4));
+
+// ── Draw Links ──
+const linkGroup = g.append('g');
+const linkEls = linkGroup.selectAll('line')
+  .data(links).join('line')
+  .attr('stroke', d => linkTypeColors[d.type])
+  .attr('stroke-opacity', 0.25)
+  .attr('stroke-width', 1.5)
+  .attr('marker-end', d => `url(#arrow-${d.type})`);
+
+// ── Draw Nodes ──
+const nodeGroup = g.append('g');
+const nodeEls = nodeGroup.selectAll('g')
+  .data(nodes).join('g')
+  .attr('cursor', 'pointer')
+  .call(d3.drag()
+    .on('start', (e,d) => { if(!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+    .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
+    .on('end', (e,d) => { if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; })
+  );
+
+nodeEls.append('circle')
+  .attr('r', d => typeSizes[d.type])
+  .attr('fill', d => typeColors[d.type])
+  .attr('fill-opacity', 0.85)
+  .attr('stroke', d => typeColors[d.type])
+  .attr('stroke-width', 2)
+  .attr('stroke-opacity', 0.3);
+
+nodeEls.append('circle')
+  .attr('r', d => typeSizes[d.type] + 8)
+  .attr('fill', d => typeColors[d.type])
+  .attr('fill-opacity', 0)
+  .attr('class', 'hover-ring');
+
+let showLabels = true;
+const labelEls = nodeEls.append('text')
+  .text(d => d.name.length > 18 ? d.name.slice(0,18)+'…' : d.name)
+  .attr('x', d => typeSizes[d.type] + 6)
+  .attr('y', 4)
+  .attr('font-size', '10px')
+  .attr('fill', '#94a3b8')
+  .attr('font-family', 'Noto Sans SC, sans-serif')
+  .attr('pointer-events', 'none');
+
+// ── Tick ──
+simulation.on('tick', () => {
+  linkEls
+    .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+  nodeEls.attr('transform', d => `translate(${d.x},${d.y})`);
+});
+
+// ── Stats ──
+document.getElementById('stat-total').textContent = nodes.length;
+document.getElementById('stat-links').textContent = links.length;
+const connectedIds = new Set();
+links.forEach(l => { connectedIds.add(l.source.id || l.source); connectedIds.add(l.target.id || l.target); });
+const orphanCount = nodes.filter(n => !connectedIds.has(n.id)).length;
+document.getElementById('stat-orphan').textContent = orphanCount;
+const coverage = Math.round((connectedIds.size / nodes.length) * 100);
+document.getElementById('stat-coverage').textContent = coverage + '%';
+if (orphanCount > 0) {
+  document.getElementById('orphanCount').textContent = orphanCount;
+  document.getElementById('orphanBanner').classList.add('show');
+}
+
+// ── Tooltip ──
+const tooltip = document.getElementById('tooltip');
+nodeEls.on('mouseover', (e, d) => {
+  tooltip.querySelector('.tt-type').textContent = typeLabels[d.type];
+  tooltip.querySelector('.tt-type').style.color = typeColors[d.type];
+  tooltip.querySelector('.tt-name').textContent = d.name;
+  tooltip.querySelector('.tt-path').textContent = d.path;
+  tooltip.classList.add('visible');
+
+  d3.select(e.currentTarget).select('circle').attr('fill-opacity', 1).attr('stroke-width', 3);
+  highlightConnected(d);
+}).on('mousemove', (e) => {
+  const rect = document.querySelector('.main').getBoundingClientRect();
+  tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+  tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+}).on('mouseout', (e, d) => {
+  tooltip.classList.remove('visible');
+  d3.select(e.currentTarget).select('circle').attr('fill-opacity', 0.85).attr('stroke-width', 2);
+  resetHighlight();
+});
+
+function highlightConnected(d) {
+  const connected = new Set([d.id]);
+  links.forEach(l => {
+    const sid = l.source.id || l.source;
+    const tid = l.target.id || l.target;
+    if (sid === d.id) connected.add(tid);
+    if (tid === d.id) connected.add(sid);
+  });
+  nodeEls.style('opacity', n => connected.has(n.id) ? 1 : 0.12);
+  linkEls
+    .attr('stroke-opacity', l => {
+      const sid = l.source.id || l.source;
+      const tid = l.target.id || l.target;
+      return (sid === d.id || tid === d.id) ? 0.7 : 0.04;
+    })
+    .attr('stroke-width', l => {
+      const sid = l.source.id || l.source;
+      const tid = l.target.id || l.target;
+      return (sid === d.id || tid === d.id) ? 2.5 : 1;
+    });
+}
+function resetHighlight() {
+  nodeEls.style('opacity', 1);
+  linkEls.attr('stroke-opacity', 0.25).attr('stroke-width', 1.5);
+}
+
+// ── Click → Detail Panel ──
+nodeEls.on('click', (e, d) => {
+  const panel = document.getElementById('detailPanel');
+  const badge = document.getElementById('detailBadge');
+  badge.textContent = typeLabels[d.type];
+  badge.style.background = typeColors[d.type] + '20';
+  badge.style.color = typeColors[d.type];
+  document.getElementById('detailTitle').textContent = d.name;
+  document.getElementById('detailPath').textContent = d.path;
+
+  const meta = document.getElementById('detailMeta');
+  let metaHTML = `<div class="meta-row"><span class="meta-label">类型</span><span class="meta-value">${typeLabels[d.type]}</span></div>`;
+  if (d.date) metaHTML += `<div class="meta-row"><span class="meta-label">日期</span><span class="meta-value">${d.date}</span></div>`;
+  if (d.atomType) metaHTML += `<div class="meta-row"><span class="meta-label">信息类型</span><span class="meta-value">${d.atomType}</span></div>`;
+  if (d.atomCount) metaHTML += `<div class="meta-row"><span class="meta-label">包含 Atoms</span><span class="meta-value">${d.atomCount}</span></div>`;
+  if (d.confidence) metaHTML += `<div class="meta-row"><span class="meta-label">置信度</span><span class="meta-value">${d.confidence}</span></div>`;
+  if (d.keyLines) metaHTML += `<div class="meta-row"><span class="meta-label">Key Lines</span><span class="meta-value">${d.keyLines}</span></div>`;
+  if (d.format) metaHTML += `<div class="meta-row"><span class="meta-label">产出格式</span><span class="meta-value">${d.format}</span></div>`;
+  meta.innerHTML = metaHTML;
+
+  const incoming = links.filter(l => (l.target.id||l.target) === d.id);
+  const outgoing = links.filter(l => (l.source.id||l.source) === d.id);
+
+  const inList = document.getElementById('detailIncoming');
+  inList.innerHTML = incoming.length ? incoming.map(l => {
+    const src = nodes.find(n => n.id === (l.source.id||l.source));
+    return `<li><span class="ref-dot" style="background:${typeColors[src.type]}"></span><span class="ref-name">${src.name}</span><span class="ref-arrow">←</span></li>`;
+  }).join('') : '<li style="color:var(--text-muted);background:none">无</li>';
+
+  const outList = document.getElementById('detailOutgoing');
+  outList.innerHTML = outgoing.length ? outgoing.map(l => {
+    const tgt = nodes.find(n => n.id === (l.target.id||l.target));
+    return `<li><span class="ref-dot" style="background:${typeColors[tgt.type]}"></span><span class="ref-name">${tgt.name}</span><span class="ref-arrow">→</span></li>`;
+  }).join('') : '<li style="color:var(--text-muted);background:none">无</li>';
+
+  panel.classList.add('open');
+});
+
+document.getElementById('closeDetail').addEventListener('click', () => {
+  document.getElementById('detailPanel').classList.remove('open');
+});
+
+// ── Filter Chips ──
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    chip.classList.toggle('active');
+    const activeTypes = new Set([...document.querySelectorAll('.chip.active')].map(c => c.dataset.type));
+    nodeEls.style('display', d => activeTypes.has(d.type) ? null : 'none');
+    linkEls.style('display', l => {
+      const sType = (l.source.type || nodes.find(n=>n.id===l.source)?.type);
+      const tType = (l.target.type || nodes.find(n=>n.id===l.target)?.type);
+      return activeTypes.has(sType) && activeTypes.has(tType) ? null : 'none';
+    });
+  });
+});
+
+// ── Zoom Controls ──
+document.getElementById('zoomIn').addEventListener('click', () => svg.transition().duration(300).call(zoom.scaleBy, 1.4));
+document.getElementById('zoomOut').addEventListener('click', () => svg.transition().duration(300).call(zoom.scaleBy, 0.7));
+document.getElementById('zoomReset').addEventListener('click', () => svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity));
+
+// ── Toggle Labels ──
+document.getElementById('toggleLabels').addEventListener('click', () => {
+  showLabels = !showLabels;
+  labelEls.style('display', showLabels ? null : 'none');
+});
+
+// ── Toggle Force ──
+let forceRunning = true;
+document.getElementById('toggleForce').addEventListener('click', () => {
+  forceRunning = !forceRunning;
+  if (forceRunning) simulation.alpha(0.3).restart();
+  else simulation.stop();
+});
+
+// ── Search ──
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase().trim();
+  if (!q) { resetHighlight(); return; }
+  const matched = new Set();
+  nodes.forEach(n => { if (n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q)) matched.add(n.id); });
+  nodeEls.style('opacity', d => matched.has(d.id) ? 1 : 0.08);
+  linkEls.attr('stroke-opacity', l => {
+    const sid = l.source.id||l.source, tid = l.target.id||l.target;
+    return (matched.has(sid) || matched.has(tid)) ? 0.5 : 0.03;
+  });
+});
+</script>
+</body>
+</html>

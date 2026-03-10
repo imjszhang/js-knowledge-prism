@@ -20,6 +20,7 @@ js-knowledge-prism v${pkg.version}
   new-perspective <slug>  从模板创建新视角
   output                  从视角生成面向读者的产出
   agent-index             生成 Agent 检索索引（SKILL.md + CONTEXT.md）
+  graph                   生成知识图谱可视化 HTML
 
 全局选项:
   -h, --help              显示帮助
@@ -77,6 +78,11 @@ try {
     }
     case "agent-index": {
       const { run } = await import("../lib/agent-index.mjs");
+      await run(commandArgs);
+      break;
+    }
+    case "graph": {
+      const { run } = await import("../lib/graph.mjs");
       await run(commandArgs);
       break;
     }
