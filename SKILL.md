@@ -1,7 +1,7 @@
 ---
 name: js-knowledge-prism
 description: Pyramid-principle knowledge distillation — extract atoms, form groups, synthesize insights from journal notes.
-version: 1.3.0
+version: 1.4.0
 metadata:
   openclaw:
     emoji: "\U0001F48E"
@@ -56,10 +56,10 @@ The OpenClaw plugin connects to an OpenAI-compatible LLM API to drive extraction
 | `knowledge_prism_register` | Register a knowledge base for automatic cron processing |
 | `knowledge_prism_unregister` | Remove a knowledge base from automatic processing |
 | `knowledge_prism_list_registered` | List all registered knowledge bases with status |
-| `knowledge_prism_process_all` | Batch process all registered and enabled knowledge bases |
+| `knowledge_prism_process_all` | Batch process all registered bases; signals output inbox on changes |
 | `knowledge_prism_bind_output` | Bind perspective+template for auto output generation (with `refreshStructure` toggle) |
 | `knowledge_prism_list_output_bindings` | List all output bindings and their status |
-| `knowledge_prism_output_all` | Batch generate all bound outputs (auto structure refresh + change detection) |
+| `knowledge_prism_output_all` | Inbox/batch output with crash recovery and retry (structure refresh + change detection) |
 | `knowledge_prism_discover_skills` | Query the extension skill registry |
 | `knowledge_prism_install_skill` | Download and install an extension skill |
 
@@ -103,6 +103,9 @@ js-knowledge-prism/
 │   ├── openclaw.plugin.json           ← Plugin manifest (config schema, UI hints)
 │   ├── package.json                   ← ESM module descriptor
 │   ├── index.mjs                      ← Plugin logic — 18 AI tools + CLI + HTTP routes
+│   ├── output-inbox.jsonl             ← (runtime) change signals from process_all
+│   ├── output-batch-*.json            ← (runtime) active batch for crash recovery
+│   ├── output-archive/                ← (runtime) completed batch archive
 │   └── skills/
 │       └── prism-processor/
 │           └── SKILL.md               ← Cron auto-processing skill definition

@@ -220,10 +220,10 @@ openclaw prism sync [--force]
 | `knowledge_prism_output` | 从视角生成面向读者的产出 |
 | `knowledge_prism_register` | 注册知识库到自动处理列表 |
 | `knowledge_prism_list_registered` | 列出所有已注册知识库及状态 |
-| `knowledge_prism_process_all` | 批量处理所有已注册知识库 |
+| `knowledge_prism_process_all` | 批量处理所有已注册知识库，变更时自动通知 output inbox |
 | `knowledge_prism_bind_output` | 绑定视角+模板的自动产出配置（含 `refreshStructure` 开关） |
 | `knowledge_prism_list_output_bindings` | 列出所有产出绑定及状态 |
-| `knowledge_prism_output_all` | 批量生成所有已绑定的产出（自动刷新 structure + 变化检测） |
+| `knowledge_prism_output_all` | Inbox/batch 轮转产出（崩溃恢复 + 失败重试 + 变化检测） |
 
 ### Web UI：知识图谱总览
 

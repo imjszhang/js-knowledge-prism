@@ -71,6 +71,16 @@ function patchWindowsHide() {
 
 patchWindowsHide();
 
+/**
+ * Convert a minutes interval to a valid cron expression.
+ * Cron minute field max is 59; intervals > 60 use hour-level expressions.
+ */
+function minutesToCronExpr(minutes) {
+  if (minutes <= 60) return `*/${minutes} * * * *`;
+  if (minutes % 60 === 0) return `0 */${minutes / 60} * * *`;
+  return `0 */${Math.max(1, Math.floor(minutes / 60))} * * *`;
+}
+
 export default function register(api) {
   // Load project-local .env (won't clobber existing env vars)
   loadProjectDotEnv(join(PROJECT_ROOT, ".env"));
@@ -191,6 +201,136 @@ export default function register(api) {
     } catch {
       return "Knowledge Prism";
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Output inbox/batch helpers (inbox/batch rotation for reliable output cron)
+  // ---------------------------------------------------------------------------
+
+  const MAX_KL_RETRIES = 3;
+
+  function getOutputInboxPath() {
+    return join(getRegistryDir(), "output-inbox.jsonl");
+  }
+
+  function getOutputArchiveDir() {
+    return join(getRegistryDir(), "output-archive");
+  }
+
+  function appendToOutputInbox(entry) {
+    const dir = getRegistryDir();
+    mkdirSync(dir, { recursive: true });
+    const p = getOutputInboxPath();
+    const line = JSON.stringify(entry) + "\n";
+    writeFileSync(p, line, { encoding: "utf-8", flag: "a" });
+  }
+
+  function readOutputInbox() {
+    const p = getOutputInboxPath();
+    if (!existsSync(p)) return [];
+    const lines = readFileSync(p, "utf-8").split(/\r?\n/).filter(Boolean);
+    const entries = [];
+    for (const line of lines) {
+      try { entries.push(JSON.parse(line)); } catch { /* skip malformed */ }
+    }
+    return entries;
+  }
+
+  function findOutputBatchFile() {
+    const dir = getRegistryDir();
+    if (!existsSync(dir)) return null;
+    const files = readdirSync(dir).filter((f) => f.startsWith("output-batch-") && f.endsWith(".json"));
+    return files.length > 0 ? join(dir, files[0]) : null;
+  }
+
+  function loadOutputBatch(batchPath) {
+    try {
+      return JSON.parse(readFileSync(batchPath, "utf-8"));
+    } catch {
+      return null;
+    }
+  }
+
+  function saveOutputBatch(batchPath, batch) {
+    const tmp = batchPath + ".tmp";
+    writeFileSync(tmp, JSON.stringify(batch, null, 2) + "\n", "utf-8");
+    renameSync(tmp, batchPath);
+  }
+
+  function archiveOutputBatch(batchPath) {
+    const archiveDir = getOutputArchiveDir();
+    mkdirSync(archiveDir, { recursive: true });
+    const name = batchPath.split(/[/\\]/).pop();
+    const dest = join(archiveDir, name);
+    renameSync(batchPath, dest);
+  }
+
+  function rotateInboxToBatch() {
+    const inboxPath = getOutputInboxPath();
+    const ts = new Date().toISOString().replace(/[:.]/g, "").slice(0, 15);
+    const batchPath = join(getRegistryDir(), `output-batch-${ts}.json`);
+
+    const inboxEntries = readOutputInbox();
+    if (inboxEntries.length === 0) return null;
+
+    const baseDirs = [...new Set(inboxEntries.map((e) => normalizeBaseDir(e.baseDir)))];
+    const registry = loadRegistry();
+
+    const items = [];
+    for (const bd of baseDirs) {
+      const idx = findBaseIndex(registry, bd);
+      if (idx < 0) continue;
+      const base = registry.bases[idx];
+      const bindings = (base.outputBindings || []).filter((b) => b.enabled);
+      for (const binding of bindings) {
+        items.push({
+          baseDir: bd,
+          perspectiveDir: binding.perspectiveDir,
+          template: binding.template,
+          kls: [],
+          structureRefreshed: false,
+        });
+      }
+    }
+
+    if (items.length === 0) return null;
+
+    const batch = { createdAt: new Date().toISOString(), source: "inbox", items };
+    saveOutputBatch(batchPath, batch);
+
+    writeFileSync(inboxPath, "", "utf-8");
+
+    return batchPath;
+  }
+
+  function buildRetryBatch(registry) {
+    const items = [];
+    for (const base of registry.bases.filter((b) => b.enabled)) {
+      for (const binding of (base.outputBindings || []).filter((b) => b.enabled)) {
+        const retryable = (binding.failedKLs || []).filter(
+          (f) => f.retries < MAX_KL_RETRIES && f.status !== "permanently_failed",
+        );
+        if (retryable.length === 0) continue;
+        items.push({
+          baseDir: normalizeBaseDir(base.baseDir),
+          perspectiveDir: binding.perspectiveDir,
+          template: binding.template,
+          kls: retryable.map((f) => ({
+            klId: f.klId,
+            status: "pending",
+            retries: f.retries,
+          })),
+          structureRefreshed: true,
+        });
+      }
+    }
+    if (items.length === 0) return null;
+
+    const ts = new Date().toISOString().replace(/[:.]/g, "").slice(0, 15);
+    const batchPath = join(getRegistryDir(), `output-batch-${ts}.json`);
+    const batch = { createdAt: new Date().toISOString(), source: "retry", items };
+    saveOutputBatch(batchPath, batch);
+    return batchPath;
   }
 
   // ---------------------------------------------------------------------------
@@ -543,7 +683,7 @@ export default function register(api) {
               return;
             }
 
-            const cronExpr = `*/${minutes} * * * *`;
+            const cronExpr = minutesToCronExpr(minutes);
             const result = runOcCron([
               "add",
               "--name", JOB_NAME,
@@ -615,18 +755,7 @@ export default function register(api) {
               return;
             }
 
-            // cron 分钟字段最大 59，超过 60 需用小时级表达式，如 120 分钟 → 0 */2 * * *
-            let cronExpr;
-            if (minutes <= 60) {
-              cronExpr = `*/${minutes} * * * *`;
-            } else if (minutes % 60 === 0) {
-              const hours = minutes / 60;
-              cronExpr = `0 */${hours} * * *`;
-            } else {
-              const hours = Math.max(1, Math.floor(minutes / 60));
-              cronExpr = `0 */${hours} * * *`;
-            }
-
+            const cronExpr = minutesToCronExpr(minutes);
             const result = runOcCron([
               "add",
               "--name", JOB_NAME,
@@ -1511,6 +1640,24 @@ export default function register(api) {
             base.lastProcessedAt = new Date().toISOString();
             base.lastSummary = entry.message;
             regenerateGraph(base.baseDir);
+
+            const hasOutputRelevantChanges =
+              summary.synthesisUpdated || summary.groupsWritten > 0 || summary.groupsUpdated > 0;
+            if (hasOutputRelevantChanges) {
+              try {
+                const perspectives = (base.outputBindings || [])
+                  .filter((b) => b.enabled)
+                  .map((b) => b.perspectiveDir);
+                if (perspectives.length > 0) {
+                  appendToOutputInbox({
+                    baseDir: normalizeBaseDir(base.baseDir),
+                    changedAt: new Date().toISOString(),
+                    trigger: "process_all",
+                    perspectives: [...new Set(perspectives)],
+                  });
+                }
+              } catch { /* best-effort */ }
+            }
           } catch (err) {
             entry.status = "error";
             entry.message = err.message?.slice(0, 200);
@@ -1743,9 +1890,9 @@ export default function register(api) {
       name: "knowledge_prism_output_all",
       label: "Knowledge Prism: Output All Bindings",
       description:
-        "批量生成所有已注册知识库中启用的产出绑定。分两阶段执行：" +
-        "Phase 1 检测 synthesis/groups 变化并自动刷新 structure（SCQA + Key Lines + expand KL）；" +
-        "Phase 2 检测 structure 变化并调 LLM 生成 output 内容。单个绑定失败不影响其他绑定。",
+        "批量生成所有已注册知识库中启用的产出绑定。使用 inbox/batch 轮转机制：" +
+        "优先恢复未完成 batch（崩溃恢复），其次处理 inbox 信号，再次重试失败 KL，" +
+        "最后 fallback 到 mtime 检测。支持断点续传和自动重试（最多 3 次）。",
       parameters: {
         type: "object",
         properties: {
@@ -1777,25 +1924,285 @@ export default function register(api) {
         const { runExpandKl } = await import("../lib/expand-kl.mjs");
         const callAgent = buildCallAgent();
 
+        // =================================================================
+        // Determine work source: batch (crash recovery) > inbox > retry > mtime fallback
+        // =================================================================
+        let batchPath = findOutputBatchFile();
+        let useBatch = false;
+        let useMtimeFallback = false;
+
+        if (batchPath) {
+          useBatch = true;
+          api.logger.info("[output_all] 检测到未完成 batch，执行崩溃恢复");
+        } else {
+          batchPath = rotateInboxToBatch();
+          if (batchPath) {
+            useBatch = true;
+            api.logger.info("[output_all] inbox 已轮转为 batch");
+          } else {
+            batchPath = buildRetryBatch(registry);
+            if (batchPath) {
+              useBatch = true;
+              api.logger.info("[output_all] 构建重试 batch");
+            } else {
+              useMtimeFallback = true;
+            }
+          }
+        }
+
+        // =================================================================
+        // Batch-driven path: process items from batch with checkpoint
+        // =================================================================
+        if (useBatch) {
+          const batch = loadOutputBatch(batchPath);
+          if (!batch || !batch.items || batch.items.length === 0) {
+            try { archiveOutputBatch(batchPath); } catch { /* best-effort */ }
+            return textResult("Batch 为空，无需处理。");
+          }
+
+          for (const item of batch.items) {
+            const idx = findBaseIndex(registry, item.baseDir);
+            if (idx < 0) {
+              results.push({ name: item.baseDir, binding: "(全部)", status: "error", message: "知识库未注册" });
+              continue;
+            }
+            const base = registry.bases[idx];
+            const binding = (base.outputBindings || []).find(
+              (b) => b.perspectiveDir === item.perspectiveDir && b.template === item.template,
+            );
+            if (!binding || !binding.enabled) continue;
+
+            if (!existsSync(join(base.baseDir, ".knowledgeprism.json"))) {
+              results.push({ name: base.name, binding: "(全部)", status: "error", message: "路径无效或未初始化" });
+              continue;
+            }
+
+            const paths = makePaths(base.baseDir);
+            const perspPath = join(paths.structureDir, item.perspectiveDir);
+
+            // --- Phase 1: Structure refresh (once per batch item, skip if already done or retry batch) ---
+            if (!item.structureRefreshed && (binding.refreshStructure ?? true) && !dryRun) {
+              if (existsSync(perspPath) && existsSync(paths.synthesisPath)) {
+                const synthMtime = statSync(paths.synthesisPath).mtimeMs;
+                const groupsMtime = getLatestMtime(paths.groupsDir);
+                const analysisMtime = Math.max(synthMtime, groupsMtime);
+                const lastRefreshMs = binding.lastStructureRefreshAt
+                  ? new Date(binding.lastStructureRefreshAt).getTime()
+                  : 0;
+
+                if (analysisMtime > lastRefreshMs) {
+                  const refreshEntry = { name: base.name, binding: `${item.perspectiveDir} [structure 刷新]` };
+                  try {
+                    const scqaResult = await runFillPerspective({
+                      baseDir: base.baseDir, perspectiveDir: item.perspectiveDir,
+                      stage: "scqa", autoWrite: true, callAgent,
+                    });
+                    const klResult = await runFillPerspective({
+                      baseDir: base.baseDir, perspectiveDir: item.perspectiveDir,
+                      stage: "keyline", autoWrite: true, callAgent,
+                    });
+
+                    let expandCount = 0;
+                    let expandErrors = 0;
+                    const treePath = join(perspPath, "tree", "README.md");
+                    if (existsSync(treePath)) {
+                      const treeContent = readFileSync(treePath, "utf-8");
+                      const keyLines = parseKeyLineTable(treeContent);
+                      for (const kl of keyLines) {
+                        try {
+                          await runExpandKl({
+                            baseDir: base.baseDir, perspectiveDir: item.perspectiveDir,
+                            klId: kl.klId, autoWrite: true, callAgent,
+                          });
+                          expandCount++;
+                        } catch (err) {
+                          expandErrors++;
+                          api.logger.warn(`[${base.name}] expand ${kl.klId} 失败: ${err.message}`);
+                        }
+                      }
+                    }
+
+                    binding.lastStructureRefreshAt = new Date().toISOString();
+
+                    const parts = [];
+                    if (scqaResult.success) parts.push("SCQA ✓");
+                    else parts.push(`SCQA ✗ ${scqaResult.message?.slice(0, 60)}`);
+                    if (klResult.success) parts.push("Key Lines ✓");
+                    else parts.push(`Key Lines ✗ ${klResult.message?.slice(0, 60)}`);
+                    if (expandCount > 0 || expandErrors > 0) {
+                      parts.push(`expand KL: ${expandCount} 成功` + (expandErrors ? `, ${expandErrors} 失败` : ""));
+                    }
+                    refreshEntry.status = "refreshed";
+                    refreshEntry.message = parts.join(", ");
+                  } catch (err) {
+                    refreshEntry.status = "error";
+                    refreshEntry.message = `structure 刷新失败: ${err.message?.slice(0, 150)}`;
+                  }
+                  results.push(refreshEntry);
+                }
+              }
+              item.structureRefreshed = true;
+              try { saveOutputBatch(batchPath, batch); } catch { /* best-effort */ }
+            }
+
+            // --- Phase 2: KL-level output with checkpoint ---
+            if (!existsSync(perspPath)) {
+              results.push({ name: base.name, binding: `${item.perspectiveDir} + ${item.template}`, status: "error", message: "视角目录不存在" });
+              continue;
+            }
+            const tpl = loadTemplate(item.template, base.baseDir);
+            if (!tpl) {
+              results.push({ name: base.name, binding: `${item.perspectiveDir} + ${item.template}`, status: "error", message: `模板不存在: ${item.template}` });
+              continue;
+            }
+
+            if (item.kls.length === 0) {
+              const treePath = join(perspPath, "tree", "README.md");
+              if (existsSync(treePath)) {
+                const treeContent = readFileSync(treePath, "utf-8");
+                const keyLines = parseKeyLineTable(treeContent);
+                item.kls = keyLines.map((kl) => ({ klId: kl.klId, status: "pending", retries: 0 }));
+                try { saveOutputBatch(batchPath, batch); } catch { /* best-effort */ }
+              }
+            }
+
+            const pendingKls = item.kls.filter((k) => k.status === "pending");
+            if (pendingKls.length === 0) {
+              results.push({ name: base.name, binding: `${item.perspectiveDir} + ${item.template}`, status: "skipped", message: "batch 中无待处理 KL" });
+              continue;
+            }
+
+            if (dryRun) {
+              results.push({ name: base.name, binding: `${item.perspectiveDir} + ${item.template}`, status: "dry-run", message: `${pendingKls.length} 个 KL 待生成` });
+              continue;
+            }
+
+            const outputResult = await runOutput({
+              baseDir: base.baseDir,
+              perspectiveDir: item.perspectiveDir,
+              template: item.template,
+              mode: "generate",
+              autoWrite: true,
+              dryRun: false,
+              force,
+              klFilter: pendingKls.map((k) => k.klId),
+              callAgent,
+              log: (msg) => api.logger.info(`[${base.name}] ${msg}`),
+              warn: (msg) => api.logger.warn(`[${base.name}] ${msg}`),
+            });
+
+            let genCount = 0;
+            let errCount = 0;
+            if (outputResult.results) {
+              for (const r of outputResult.results) {
+                const batchKl = item.kls.find((k) => k.klId === r.klId);
+                if (!batchKl) continue;
+
+                if (r.status === "generated" || r.status === "written" || r.status === "created") {
+                  batchKl.status = "done";
+                  batchKl.processedAt = new Date().toISOString();
+                  genCount++;
+                  const failedEntry = (binding.failedKLs || []).findIndex((f) => f.klId === r.klId);
+                  if (failedEntry >= 0) binding.failedKLs.splice(failedEntry, 1);
+                } else if (r.status === "error") {
+                  const retries = (batchKl.retries || 0) + 1;
+                  if (retries >= MAX_KL_RETRIES) {
+                    batchKl.status = "permanently_failed";
+                    batchKl.error = r.error || r.message;
+                    if (!binding.failedKLs) binding.failedKLs = [];
+                    const existingFailed = binding.failedKLs.find((f) => f.klId === r.klId);
+                    if (existingFailed) {
+                      existingFailed.retries = retries;
+                      existingFailed.status = "permanently_failed";
+                      existingFailed.lastError = r.error || r.message;
+                      existingFailed.failedAt = new Date().toISOString();
+                    } else {
+                      binding.failedKLs.push({
+                        klId: r.klId, retries, status: "permanently_failed",
+                        lastError: r.error || r.message, failedAt: new Date().toISOString(),
+                      });
+                    }
+                  } else {
+                    batchKl.status = "retry";
+                    batchKl.retries = retries;
+                    batchKl.error = r.error || r.message;
+                    if (!binding.failedKLs) binding.failedKLs = [];
+                    const existingFailed = binding.failedKLs.find((f) => f.klId === r.klId);
+                    if (existingFailed) {
+                      existingFailed.retries = retries;
+                      existingFailed.lastError = r.error || r.message;
+                      existingFailed.failedAt = new Date().toISOString();
+                    } else {
+                      binding.failedKLs.push({
+                        klId: r.klId, retries, status: "pending",
+                        lastError: r.error || r.message, failedAt: new Date().toISOString(),
+                      });
+                    }
+                  }
+                  errCount++;
+                } else if (r.status === "skipped") {
+                  batchKl.status = "done";
+                  batchKl.processedAt = new Date().toISOString();
+                }
+              }
+            }
+
+            try { saveOutputBatch(batchPath, batch); } catch { /* best-effort */ }
+
+            if (genCount > 0) {
+              binding.lastOutputAt = new Date().toISOString();
+              binding.lastOutputSummary = `生成: ${genCount}` + (errCount ? `, 失败: ${errCount}` : "");
+            }
+
+            const entry = { name: base.name, binding: `${item.perspectiveDir} + ${item.template}` };
+            if (genCount > 0 || errCount === 0) {
+              entry.status = "generated";
+              entry.message = `${outputResult.message || ""}` +
+                (genCount ? ` (生成: ${genCount}` + (errCount ? `, 失败: ${errCount})` : ")") : "");
+            } else {
+              entry.status = "error";
+              entry.message = `全部失败 (${errCount} 个)`;
+            }
+            results.push(entry);
+          }
+
+          if (!dryRun) {
+            try { archiveOutputBatch(batchPath); } catch { /* best-effort */ }
+            try { saveRegistry(registry); } catch { /* best-effort */ }
+          }
+
+          if (results.length === 0) {
+            return textResult("Batch 中无可处理的产出绑定。");
+          }
+
+          const lines = [`自动产出完毕 — batch 模式（${results.length} 项）`, ""];
+          for (const r of results) {
+            const icon =
+              r.status === "generated" ? "✓" :
+              r.status === "refreshed" ? "↻" :
+              r.status === "skipped" ? "—" :
+              r.status === "dry-run" ? "👁" :
+              "✗";
+            lines.push(`${icon} ${r.name} | ${r.binding}`);
+            lines.push(`  ${r.message}`);
+            lines.push("");
+          }
+          return textResult(lines.join("\n"));
+        }
+
+        // =================================================================
+        // Mtime fallback path (manual trigger or no inbox/retry work)
+        // =================================================================
         for (const base of enabledBases) {
           const bindings = (base.outputBindings || []).filter((b) => b.enabled);
           if (bindings.length === 0) continue;
 
           if (!existsSync(join(base.baseDir, ".knowledgeprism.json"))) {
-            results.push({
-              name: base.name,
-              binding: "(全部)",
-              status: "error",
-              message: "路径无效或未初始化",
-            });
+            results.push({ name: base.name, binding: "(全部)", status: "error", message: "路径无效或未初始化" });
             continue;
           }
 
           const paths = makePaths(base.baseDir);
-
-          // ----------------------------------------------------------
-          // Phase 1: Structure 刷新（按 perspective 去重）
-          // ----------------------------------------------------------
           const refreshedPerspectives = new Set();
 
           for (const binding of bindings) {
@@ -1806,12 +2213,7 @@ export default function register(api) {
             if (!existsSync(perspPath)) continue;
 
             if (!existsSync(paths.synthesisPath)) {
-              results.push({
-                name: base.name,
-                binding: `${binding.perspectiveDir} [structure 刷新]`,
-                status: "skipped",
-                message: "synthesis.md 不存在，跳过 structure 刷新",
-              });
+              results.push({ name: base.name, binding: `${binding.perspectiveDir} [structure 刷新]`, status: "skipped", message: "synthesis.md 不存在" });
               refreshedPerspectives.add(binding.perspectiveDir);
               continue;
             }
@@ -1824,47 +2226,26 @@ export default function register(api) {
               : 0;
 
             if (analysisMtime <= lastRefreshMs) {
-              results.push({
-                name: base.name,
-                binding: `${binding.perspectiveDir} [structure 刷新]`,
-                status: "skipped",
-                message: "synthesis/groups 无变化",
-              });
+              results.push({ name: base.name, binding: `${binding.perspectiveDir} [structure 刷新]`, status: "skipped", message: "synthesis/groups 无变化" });
               refreshedPerspectives.add(binding.perspectiveDir);
               continue;
             }
 
             if (dryRun) {
-              results.push({
-                name: base.name,
-                binding: `${binding.perspectiveDir} [structure 刷新]`,
-                status: "dry-run",
-                message: "检测到 synthesis/groups 变化，待刷新",
-              });
+              results.push({ name: base.name, binding: `${binding.perspectiveDir} [structure 刷新]`, status: "dry-run", message: "检测到变化，待刷新" });
               refreshedPerspectives.add(binding.perspectiveDir);
               continue;
             }
 
-            const refreshEntry = {
-              name: base.name,
-              binding: `${binding.perspectiveDir} [structure 刷新]`,
-            };
-
+            const refreshEntry = { name: base.name, binding: `${binding.perspectiveDir} [structure 刷新]` };
             try {
               const scqaResult = await runFillPerspective({
-                baseDir: base.baseDir,
-                perspectiveDir: binding.perspectiveDir,
-                stage: "scqa",
-                autoWrite: true,
-                callAgent,
+                baseDir: base.baseDir, perspectiveDir: binding.perspectiveDir,
+                stage: "scqa", autoWrite: true, callAgent,
               });
-
               const klResult = await runFillPerspective({
-                baseDir: base.baseDir,
-                perspectiveDir: binding.perspectiveDir,
-                stage: "keyline",
-                autoWrite: true,
-                callAgent,
+                baseDir: base.baseDir, perspectiveDir: binding.perspectiveDir,
+                stage: "keyline", autoWrite: true, callAgent,
               });
 
               let expandCount = 0;
@@ -1876,11 +2257,8 @@ export default function register(api) {
                 for (const kl of keyLines) {
                   try {
                     await runExpandKl({
-                      baseDir: base.baseDir,
-                      perspectiveDir: binding.perspectiveDir,
-                      klId: kl.klId,
-                      autoWrite: true,
-                      callAgent,
+                      baseDir: base.baseDir, perspectiveDir: binding.perspectiveDir,
+                      klId: kl.klId, autoWrite: true, callAgent,
                     });
                     expandCount++;
                   } catch (err) {
@@ -1892,9 +2270,7 @@ export default function register(api) {
 
               const nowIso = new Date().toISOString();
               for (const b of bindings) {
-                if (b.perspectiveDir === binding.perspectiveDir) {
-                  b.lastStructureRefreshAt = nowIso;
-                }
+                if (b.perspectiveDir === binding.perspectiveDir) b.lastStructureRefreshAt = nowIso;
               }
 
               const parts = [];
@@ -1905,28 +2281,20 @@ export default function register(api) {
               if (expandCount > 0 || expandErrors > 0) {
                 parts.push(`expand KL: ${expandCount} 成功` + (expandErrors ? `, ${expandErrors} 失败` : ""));
               }
-
               refreshEntry.status = "refreshed";
               refreshEntry.message = parts.join(", ");
             } catch (err) {
               refreshEntry.status = "error";
               refreshEntry.message = `structure 刷新失败: ${err.message?.slice(0, 150)}`;
             }
-
             results.push(refreshEntry);
             refreshedPerspectives.add(binding.perspectiveDir);
           }
 
-          // ----------------------------------------------------------
-          // Phase 2: Output 生成
-          // ----------------------------------------------------------
           for (const binding of bindings) {
-            const entry = {
-              name: base.name,
-              binding: `${binding.perspectiveDir} + ${binding.template}`,
-            };
-
+            const entry = { name: base.name, binding: `${binding.perspectiveDir} + ${binding.template}` };
             const perspPath = join(paths.structureDir, binding.perspectiveDir);
+
             if (!existsSync(perspPath)) {
               entry.status = "error";
               entry.message = `视角目录不存在: ${binding.perspectiveDir}`;
@@ -1947,7 +2315,11 @@ export default function register(api) {
               ? new Date(binding.lastOutputAt).getTime()
               : 0;
 
-            if (latestMtime <= lastOutputMs) {
+            const hasFailedKLs = (binding.failedKLs || []).some(
+              (f) => f.retries < MAX_KL_RETRIES && f.status !== "permanently_failed",
+            );
+
+            if (latestMtime <= lastOutputMs && !hasFailedKLs) {
               entry.status = "skipped";
               entry.message = "structure 无变化";
               results.push(entry);
@@ -1956,10 +2328,16 @@ export default function register(api) {
 
             if (dryRun) {
               entry.status = "dry-run";
-              entry.message = "检测到 structure 变化，待生成";
+              entry.message = hasFailedKLs ? "有失败 KL 待重试" : "检测到 structure 变化，待生成";
               results.push(entry);
               continue;
             }
+
+            const klFilter = hasFailedKLs && latestMtime <= lastOutputMs
+              ? (binding.failedKLs || [])
+                  .filter((f) => f.retries < MAX_KL_RETRIES && f.status !== "permanently_failed")
+                  .map((f) => f.klId)
+              : undefined;
 
             try {
               const result = await runOutput({
@@ -1970,22 +2348,47 @@ export default function register(api) {
                 autoWrite: true,
                 dryRun: false,
                 force,
+                klFilter,
                 callAgent,
                 log: (msg) => api.logger.info(`[${base.name}] ${msg}`),
                 warn: (msg) => api.logger.warn(`[${base.name}] ${msg}`),
               });
 
               if (result.success) {
-                const generated = result.results
-                  ? result.results.filter((r) => r.status === "written" || r.status === "created").length
-                  : 0;
-                const skipped = result.results
-                  ? result.results.filter((r) => r.status === "exists").length
-                  : 0;
+                let genCount = 0;
+                let errCount = 0;
+                if (result.results) {
+                  for (const r of result.results) {
+                    if (r.status === "generated" || r.status === "written" || r.status === "created") {
+                      genCount++;
+                      if (binding.failedKLs) {
+                        const fi = binding.failedKLs.findIndex((f) => f.klId === r.klId);
+                        if (fi >= 0) binding.failedKLs.splice(fi, 1);
+                      }
+                    } else if (r.status === "error") {
+                      errCount++;
+                      if (!binding.failedKLs) binding.failedKLs = [];
+                      const existing = binding.failedKLs.find((f) => f.klId === r.klId);
+                      const retries = existing ? existing.retries + 1 : 1;
+                      if (existing) {
+                        existing.retries = retries;
+                        existing.status = retries >= MAX_KL_RETRIES ? "permanently_failed" : "pending";
+                        existing.lastError = r.error || r.message;
+                        existing.failedAt = new Date().toISOString();
+                      } else {
+                        binding.failedKLs.push({
+                          klId: r.klId, retries,
+                          status: retries >= MAX_KL_RETRIES ? "permanently_failed" : "pending",
+                          lastError: r.error || r.message, failedAt: new Date().toISOString(),
+                        });
+                      }
+                    }
+                  }
+                }
                 entry.status = "generated";
                 entry.message =
                   `${result.message}` +
-                  (generated ? ` (生成: ${generated}` + (skipped ? `, 跳过: ${skipped})` : ")") : "");
+                  (genCount ? ` (生成: ${genCount}` + (errCount ? `, 失败: ${errCount})` : ")") : "");
                 binding.lastOutputAt = new Date().toISOString();
                 binding.lastOutputSummary = entry.message;
               } else {
@@ -2002,16 +2405,14 @@ export default function register(api) {
         }
 
         if (!dryRun) {
-          try {
-            saveRegistry(registry);
-          } catch { /* best-effort */ }
+          try { saveRegistry(registry); } catch { /* best-effort */ }
         }
 
         if (results.length === 0) {
           return textResult("所有已注册知识库均无启用的产出绑定。使用 knowledge_prism_bind_output 添加绑定。");
         }
 
-        const lines = [`自动产出完毕（${results.length} 项）`, ""];
+        const lines = [`自动产出完毕 — mtime 模式（${results.length} 项）`, ""];
         for (const r of results) {
           const icon =
             r.status === "generated" ? "✓" :

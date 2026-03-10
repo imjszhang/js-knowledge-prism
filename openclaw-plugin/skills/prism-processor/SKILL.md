@@ -1,13 +1,15 @@
 ---
 name: prism-processor
-description: 定时自动处理所有已注册知识库的增量 pipeline（atoms → groups → synthesis）及自动产出生成（structure → output），配合 cron 批量执行。
-version: 1.1.0
+description: 定时自动处理所有已注册知识库的增量 pipeline（atoms → groups → synthesis）及自动产出生成（structure → output），配合 cron 批量执行。支持 inbox/batch 轮转、崩溃恢复和自动重试。
+version: 1.2.0
 author: js-knowledge-prism
 ---
 
 # 知识棱镜自动处理器
 
 管理知识库注册表，配合 cron 定时批量处理所有已注册知识库的 journal → atoms → groups → synthesis pipeline，并根据 output binding 配置自动从 structure 生成产出文件。
+
+产出流程采用 inbox/batch 轮转机制实现变更驱动、崩溃恢复和失败自动重试。
 
 ## 触发条件
 
@@ -29,7 +31,10 @@ author: js-knowledge-prism
 <workspace>/
 └── .openclaw/
     └── prism-processor/
-        └── registry.json      # 知识库注册表
+        ├── registry.json              # 知识库注册表（含 outputBindings、failedKLs）
+        ├── output-inbox.jsonl         # 变更信号队列（process_all 追加，output cron 消费）
+        ├── output-batch-*.json        # 处理中批次（含逐 KL 进度，崩溃后自动恢复）
+        └── output-archive/            # 已完成批次归档
 ```
 
 首次注册知识库时目录和文件会自动创建。
@@ -92,9 +97,10 @@ openclaw prism setup-output-cron
    - 调用 `getStatus()` 检查是否有待处理 journal 或未归组 atom。
    - 若无新内容 → 标记"跳过"，继续下一个。
    - 若有新内容 → 执行 `runPipeline()`（atoms → groups → synthesis + Agent 索引更新）。
-3. **单库失败不中断**：try/catch 包裹，继续处理下一个知识库。
-4. **回写注册表**：更新每个库的 `lastProcessedAt` 和 `lastSummary`。
-5. **返回汇总摘要**：报告每个库的处理结果。
+3. **写变更信号**：pipeline 完成后若 synthesis 有更新或 groups 有新建/更新，向 `output-inbox.jsonl` 追加一条变更记录，包含 baseDir 和受影响的 perspectives 列表。
+4. **单库失败不中断**：try/catch 包裹，继续处理下一个知识库。
+5. **回写注册表**：更新每个库的 `lastProcessedAt` 和 `lastSummary`。
+6. **返回汇总摘要**：报告每个库的处理结果。
 
 ---
 
@@ -110,6 +116,10 @@ openclaw prism setup-output-cron
 | LLM API 整体不可用 | 所有库都会失败，下次 cron 自动重试 |
 | 注册表为空 / 无启用的库 | 直接退出，不做无效操作 |
 | 无待处理内容 | 标记"跳过"，更新 lastProcessedAt |
+| Output cron 中途崩溃 | batch 文件保留在磁盘，下次触发自动恢复 |
+| 单个 KL 生成失败 | 记录到 `failedKLs`（retries+1），下次自动重试 |
+| KL 连续失败 >= 3 次 | 标记 `permanently_failed`，不再自动重试 |
+| `output-inbox.jsonl` 某行损坏 | 跳过该行，不影响其他条目 |
 
 ---
 
@@ -122,6 +132,10 @@ openclaw prism setup-output-cron
   - 处理操作先读 `registry.json`，然后写知识库内部文件（journal/atoms/groups 等），处理完后回写 `registry.json`。
   - 极端情况下主会话在 cron 处理期间修改了注册表，cron 结束时回写会覆盖 `lastProcessedAt`，但不会丢失注册条目（cron 只修改已有条目的时间戳字段，不增删条目）。
 - 处理 cron 写 `pyramid/` 目录，产出 cron 读 `pyramid/structure/` 写 `outputs/` 目录，两者不冲突。
+- **inbox/batch 读写隔离**：
+  - 处理 cron（`process_all`）只追加写 `output-inbox.jsonl`，不读写 batch 文件。
+  - 产出 cron（`output_all`）原子 rename inbox 为 batch 后，只操作 batch 文件。新信号写入新创建的 inbox，与正在处理的 batch 互不干扰。
+  - 主会话手动触发 `output_all` 走 mtime fallback 路径，不与 inbox/batch 冲突。
 
 ---
 
@@ -138,7 +152,10 @@ openclaw prism setup-output-cron
 | 查看所有绑定 | `knowledge_prism_list_output_bindings` |
 | 查看某个库的绑定 | `knowledge_prism_list_output_bindings(baseDir)` |
 
-绑定信息存储在 `registry.json` 的 `bases[].outputBindings` 数组中。每个绑定包含 `refreshStructure` 开关（默认 true）控制是否在生成 output 前自动刷新 structure。
+绑定信息存储在 `registry.json` 的 `bases[].outputBindings` 数组中。每个绑定包含：
+
+- `refreshStructure`（默认 true）：是否在生成 output 前自动刷新 structure
+- `failedKLs`（数组）：失败的 KL 列表，含 `klId`、`retries`、`lastError`、`failedAt`、`status`
 
 ---
 
@@ -148,35 +165,67 @@ openclaw prism setup-output-cron
 
 **仅需一步**：调用 `knowledge_prism_output_all`。
 
-该工具内部分两阶段完成全部产出逻辑：
+### 工作源选择（优先级从高到低）
+
+1. **崩溃恢复**：检查 `output-batch-*.json` 是否存在 → 有则从断点恢复处理。
+2. **inbox 轮转**：检查 `output-inbox.jsonl` → 有内容则 rename 为 batch，创建空 inbox。
+3. **失败重试**：检查 registry 中是否有 `failedKLs`（retries < 3）→ 有则构建重试 batch。
+4. **mtime fallback**：以上均无工作时，遍历所有绑定的 structure 目录检测 mtime 变化（兼容手动触发场景）。
+
+### Batch 文件格式
+
+```json
+{
+  "createdAt": "2026-03-11T10:00:00Z",
+  "source": "inbox",
+  "items": [
+    {
+      "baseDir": "d:/github/fork/openclaw/docs/prism",
+      "perspectiveDir": "P23-practice-diary",
+      "template": "practice-diary",
+      "kls": [
+        {"klId": "KL19", "status": "pending", "retries": 0},
+        {"klId": "KL18", "status": "done", "retries": 0, "processedAt": "..."}
+      ],
+      "structureRefreshed": false
+    }
+  ]
+}
+```
 
 ### Phase 1: Structure 自动刷新
 
-对每个知识库，收集所有启用绑定涉及的 unique perspectives（按 perspectiveDir 去重，同一视角只刷新一次）：
+对 batch 中每个 item（尚未刷新且 `refreshStructure=true` 的）：
 
-1. 检查 `refreshStructure` 开关：若为 false → 跳过该视角的刷新。
-2. **变化检测**：比较 `pyramid/analysis/synthesis.md` 和 `pyramid/analysis/groups/` 下所有文件的最新 mtime 与 `lastStructureRefreshAt`。
-3. 若无变化 → 跳过。
-4. 若有变化 → 依次执行：
-   - `runFillPerspective(stage="scqa")` — 从 synthesis 重新生成 SCQA
-   - `runFillPerspective(stage="keyline")` — 从 synthesis/groups 重新生成 Key Line 表格
-   - `runExpandKl` — 逐条展开 Key Line 为完整 KL 文件
-5. 更新该视角所有绑定的 `lastStructureRefreshAt`。
-6. 单步失败不中断：SCQA、Key Lines、各 KL 展开独立 try/catch。
+1. 比较 synthesis/groups 的 mtime 与 `lastStructureRefreshAt`。
+2. 若有变化 → 依次执行 SCQA → Key Lines → expand KL。
+3. 更新 `lastStructureRefreshAt`，标记 `item.structureRefreshed = true`。
+4. **checkpoint**：每完成 structure 刷新立即保存 batch 文件。
 
-### Phase 2: Output 生成
+### Phase 2: Output 生成（逐 KL 断点续传）
 
-对每个启用的绑定串行执行：
+对 batch 中每个 item：
 
-1. **变化检测**：递归扫描 `pyramid/structure/<perspectiveDir>/` 下所有文件的最新 mtime，与 `lastOutputAt` 比较。
-2. 若 structure 无变化 → 跳过。
-3. 若有变化或从未生成过 → 调用 `runOutput(mode="generate")` 生成 output。
-4. **单绑定失败不中断**：try/catch 包裹，继续处理下一个绑定。
-5. **回写注册表**：更新 `lastOutputAt` 和 `lastOutputSummary`。
-6. **返回汇总摘要**：报告 structure 刷新和 output 生成的结果。
+1. 若 `kls` 为空，从 `tree/README.md` 读取 Key Line 列表填充。
+2. 筛选 `status === "pending"` 的 KL，调用 `runOutput(klFilter=...)` 生成。
+3. **逐 KL checkpoint**：每个 KL 完成后更新 batch 中该 KL 的 status：
+   - 成功 → `done`，同时从 `failedKLs` 中清除。
+   - 失败且 retries < 3 → `retry`，写入 `failedKLs`（retries+1）。
+   - 失败且 retries >= 3 → `permanently_failed`，不再自动重试。
+4. 全部完成后归档 batch 到 `output-archive/`，更新 registry。
+
+### 重试机制
+
+| 状态 | 说明 |
+|------|------|
+| `pending` | 等待下次 cron 自动重试 |
+| `permanently_failed` | 已达最大重试次数（3 次），需用户手动 `--force` 或 `--kl KLxx` 重置 |
+
+KL 生成成功时自动从 `failedKLs` 中清除。output cron 启动时若 inbox 为空但存在可重试的 `failedKLs`，会自动构建重试 batch。
 
 ### 安全保护
 
 - `force` 默认 false：已存在的非骨架 output 文件不会被覆盖。
 - `refreshStructure` 默认 true，设为 false 可跳过自动刷新（适用于手动维护 structure 的场景）。
 - synthesis.md 不存在时跳过 structure 刷新，仍尝试 output 生成（structure 可能有旧内容）。
+- Batch 文件使用 tmp + rename 原子写入，中途崩溃不会损坏进度数据。

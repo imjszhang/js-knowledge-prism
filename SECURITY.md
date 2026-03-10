@@ -9,6 +9,7 @@ JS Knowledge Prism is a local knowledge management tool. It processes files on d
 - Reads journal markdown files from the local filesystem
 - Sends content to an OpenAI-compatible API endpoint for processing
 - Writes generated output back to local files
+- Manages runtime work files (`output-inbox.jsonl`, `output-batch-*.json`, `output-archive/`) for crash recovery and retry — these are local-only and contain no secrets
 - Registers HTTP routes on the OpenClaw gateway to serve a knowledge graph hub page and pre-generated graph HTML files
 
 ## What this tool does NOT do
@@ -17,6 +18,7 @@ JS Knowledge Prism is a local knowledge management tool. It processes files on d
 - **No external API calls**: The only network communication is to the API endpoint you configure
 - **No authentication bypass**: API keys are stored locally in `.env` files or OpenClaw config
 - **No arbitrary code execution**: The tool processes markdown text only
+- **No secret leakage in work files**: `output-inbox.jsonl` and `output-batch-*.json` contain only directory paths and processing status — no API keys, journal content, or user data
 - **No arbitrary file serving**: HTTP routes only serve pre-generated `graph.html` files from registered knowledge base directories listed in the registry
 
 ## Configuration security
@@ -43,6 +45,19 @@ Security scanners (e.g., VirusTotal) may flag this tool because it:
 - Registers HTTP routes that serve local HTML files
 
 These are standard patterns for a local CLI tool that communicates with configurable API endpoints and provides a web UI through the OpenClaw gateway.
+
+## Runtime work files
+
+The output cron uses local-only work files for crash recovery:
+
+| File | Purpose | Contains secrets? |
+|------|---------|-------------------|
+| `output-inbox.jsonl` | Change signals from `process_all` | No — only base directory paths and timestamps |
+| `output-batch-*.json` | Active batch checkpoint for crash recovery | No — directory paths and KL processing status |
+| `output-archive/` | Completed batch history | No — same as batch files |
+| `registry.json` `failedKLs` | Retry tracking for failed Key Lines | No — KL identifiers and retry counts |
+
+These files are created under the OpenClaw workspace directory (`~/.openclaw/workspace/.openclaw/prism-processor/`). They do not contain API keys, journal content, or any user-identifiable information.
 
 ## Reporting vulnerabilities
 
