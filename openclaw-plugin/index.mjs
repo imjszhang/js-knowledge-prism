@@ -635,6 +635,24 @@ export default function register(api) {
     { commands: ["prism"] },
   );
 
+  /**
+   * Regenerate graph.html for a knowledge base (best-effort, never throws).
+   */
+  function regenerateGraph(baseDir) {
+    try {
+      const graph = extractGraph(baseDir);
+      const stats = analyzeGraph(graph);
+      const kbName = readBaseName(baseDir) || "Knowledge Prism";
+      generateGraphHtml(graph, stats, {
+        outputPath: join(baseDir, "graph.html"),
+        knowledgeBaseName: kbName,
+        log: () => {},
+      });
+    } catch (err) {
+      api.logger.warn(`[prism] graph regeneration failed for ${baseDir}: ${err.message}`);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // AI Tools: knowledge_prism_process, knowledge_prism_status
   // ---------------------------------------------------------------------------
@@ -692,6 +710,9 @@ export default function register(api) {
         if (warnings.length > 0) {
           parts.push("", "警告:", ...warnings.map((w) => `  - ${w}`));
         }
+
+        regenerateGraph(baseDir);
+        parts.push("", "✓ 知识图谱已自动更新");
 
         runPrismMemorySync({ logger: api.logger }).catch(() => {});
         return { content: [{ type: "text", text: parts.join("\n") }] };
@@ -1404,6 +1425,7 @@ export default function register(api) {
               `更新: ${summary.groupsUpdated}, synthesis: ${summary.synthesisUpdated ? "已更新" : "未变"}`;
             base.lastProcessedAt = new Date().toISOString();
             base.lastSummary = entry.message;
+            regenerateGraph(base.baseDir);
           } catch (err) {
             entry.status = "error";
             entry.message = err.message?.slice(0, 200);
