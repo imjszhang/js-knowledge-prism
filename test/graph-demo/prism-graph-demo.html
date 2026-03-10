@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Knowledge Prism · 知识图谱</title>
+<title>Knowledge Prism · 3D 知识图谱 Demo</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
@@ -43,7 +43,6 @@
 
   #app { display:flex; height:100vh; width:100vw; }
 
-  /* ── Left Panel ── */
   .sidebar {
     width: 280px;
     min-width: 280px;
@@ -165,13 +164,12 @@
     text-align: center;
   }
 
-  /* ── Main Graph ── */
   .main {
     flex: 1;
     position: relative;
     overflow: hidden;
   }
-  #graph { width:100%; height:100%; }
+  #graph { width: 100%; height: 100%; }
 
   .graph-controls {
     position: absolute;
@@ -184,6 +182,7 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 6px;
+    z-index: 6;
   }
   .ctrl-btn {
     width: 36px; height: 36px;
@@ -199,17 +198,20 @@
     transition: all 0.15s;
   }
   .ctrl-btn:hover { background:var(--bg-card); color:var(--text); }
+  .ctrl-btn.active-toggle { background:var(--bg-card); color:var(--accent); }
   .ctrl-btn svg { width:18px; height:18px; }
 
-  /* ── Right Detail Panel ── */
   .detail-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
     width: 320px;
-    min-width: 320px;
+    height: 100vh;
     background: var(--bg-panel);
     border-left: 1px solid var(--border);
     transform: translateX(100%);
     transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
-    z-index: 10;
+    z-index: 20;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
@@ -278,7 +280,6 @@
   .meta-row .meta-label { color:var(--text-muted); }
   .meta-row .meta-value { color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12px; }
 
-  /* ── Tooltip ── */
   .tooltip {
     position: absolute;
     pointer-events: none;
@@ -298,7 +299,6 @@
   .tooltip .tt-name { font-weight:600; font-size:14px; }
   .tooltip .tt-path { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-muted); margin-top:4px; }
 
-  /* ── Search ── */
   .search-box {
     padding: 12px 20px;
     border-bottom: 1px solid var(--border);
@@ -321,7 +321,6 @@
   .search-box input:focus { border-color: var(--accent); }
   .search-box input::placeholder { color: var(--text-muted); }
 
-  /* Orphan warning */
   .orphan-banner {
     margin: 0 20px 12px;
     padding: 10px 14px;
@@ -338,11 +337,10 @@
 <body>
 <div id="app">
 
-  <!-- Left Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-header">
       <h1>Knowledge Prism</h1>
-      <p>知识图谱 · 文档关系可视化</p>
+      <p>知识图谱 · 3D 文档关系可视化 · Demo</p>
     </div>
 
     <div class="search-box">
@@ -389,6 +387,13 @@
       <div class="legend-item"><span class="legend-dot" style="background:var(--perspective)"></span> Perspective · 视角</div>
       <div class="legend-item"><span class="legend-dot" style="background:var(--output)"></span> Output · 产出文章</div>
 
+      <h3 style="margin-top:16px">操作提示</h3>
+      <div class="legend-item" style="font-size:11px">🖱 左键拖拽 = 旋转</div>
+      <div class="legend-item" style="font-size:11px">🖱 右键拖拽 = 平移</div>
+      <div class="legend-item" style="font-size:11px">🖱 滚轮 = 缩放</div>
+      <div class="legend-item" style="font-size:11px">🖱 点击节点 = 溯源高亮</div>
+      <div class="legend-item" style="font-size:11px">⎋ ESC = 取消高亮</div>
+
       <h3 style="margin-top:16px">连线含义</h3>
       <div class="legend-line"><span class="line-sample" style="background:var(--atom)"></span> 提取自（journal→atom）</div>
       <div class="legend-line"><span class="line-sample" style="background:var(--group)"></span> 归类至（atom→group）</div>
@@ -402,13 +407,12 @@
     </div>
 
     <div class="sidebar-footer">
-      Knowledge Prism Graph · Demo · 2026-03-10
+      Knowledge Prism Graph · 3D Demo
     </div>
   </aside>
 
-  <!-- Main Graph Area -->
   <div class="main">
-    <svg id="graph"></svg>
+    <div id="graph"></div>
     <div class="graph-controls">
       <button class="ctrl-btn" id="zoomIn" title="放大">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
@@ -419,7 +423,7 @@
       <button class="ctrl-btn" id="zoomReset" title="重置视图">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
       </button>
-      <button class="ctrl-btn" id="toggleLabels" title="切换标签">
+      <button class="ctrl-btn" id="toggleLabels" title="切换 Tooltip 显示">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
       </button>
       <button class="ctrl-btn" id="toggleForce" title="暂停/恢复力模拟">
@@ -433,7 +437,6 @@
     </div>
   </div>
 
-  <!-- Right Detail Panel -->
   <aside class="detail-panel" id="detailPanel">
     <div class="detail-header">
       <div>
@@ -458,7 +461,10 @@
   </aside>
 </div>
 
-<script src="./d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three-spritetext"></script>
+<script src="https://unpkg.com/d3-force-3d"></script>
+<script src="https://unpkg.com/3d-force-graph"></script>
 <script>
 // ── Mock Data ──
 const typeColors = {
@@ -470,58 +476,58 @@ const typeLabels = {
   synthesis: 'Synthesis', perspective: '视角', output: 'Output'
 };
 const typeSizes = {
-  journal: 6, atom: 5, group: 8, synthesis: 12, perspective: 10, output: 9
+  journal: 4, atom: 3, group: 6, synthesis: 10, perspective: 8, output: 7
+};
+const linkTypeColors = {
+  extract: typeColors.atom,
+  classify: typeColors.group,
+  support: typeColors.synthesis,
+  structure: typeColors.perspective,
+  produce: typeColors.output,
 };
 
 const nodes = [
-  // Journals
-  { id:'j1', name:'2026-01-15 Vite源码阅读', type:'journal', path:'journal/2026-01-15/vite-source.md', date:'2026-01-15' },
-  { id:'j2', name:'2026-01-18 HMR机制探索', type:'journal', path:'journal/2026-01-18/hmr-explore.md', date:'2026-01-18' },
-  { id:'j3', name:'2026-01-22 ESBuild性能', type:'journal', path:'journal/2026-01-22/esbuild-perf.md', date:'2026-01-22' },
-  { id:'j4', name:'2026-02-01 Rollup插件系统', type:'journal', path:'journal/2026-02-01/rollup-plugins.md', date:'2026-02-01' },
-  { id:'j5', name:'2026-02-05 依赖预构建', type:'journal', path:'journal/2026-02-05/dep-prebundle.md', date:'2026-02-05' },
-  { id:'j6', name:'2026-02-10 CSS处理流程', type:'journal', path:'journal/2026-02-10/css-pipeline.md', date:'2026-02-10' },
-  { id:'j7', name:'2026-02-15 SSR实践', type:'journal', path:'journal/2026-02-15/ssr-practice.md', date:'2026-02-15' },
-  { id:'j8', name:'2026-02-20 Monorepo构建', type:'journal', path:'journal/2026-02-20/monorepo-build.md', date:'2026-02-20' },
+  { id:'j1', name:'2026-01-15 Vite源码阅读', type:'journal', path:'journal/2026-01-15/vite-source.md', meta:{date:'2026-01-15'} },
+  { id:'j2', name:'2026-01-18 HMR机制探索', type:'journal', path:'journal/2026-01-18/hmr-explore.md', meta:{date:'2026-01-18'} },
+  { id:'j3', name:'2026-01-22 ESBuild性能', type:'journal', path:'journal/2026-01-22/esbuild-perf.md', meta:{date:'2026-01-22'} },
+  { id:'j4', name:'2026-02-01 Rollup插件系统', type:'journal', path:'journal/2026-02-01/rollup-plugins.md', meta:{date:'2026-02-01'} },
+  { id:'j5', name:'2026-02-05 依赖预构建', type:'journal', path:'journal/2026-02-05/dep-prebundle.md', meta:{date:'2026-02-05'} },
+  { id:'j6', name:'2026-02-10 CSS处理流程', type:'journal', path:'journal/2026-02-10/css-pipeline.md', meta:{date:'2026-02-10'} },
+  { id:'j7', name:'2026-02-15 SSR实践', type:'journal', path:'journal/2026-02-15/ssr-practice.md', meta:{date:'2026-02-15'} },
+  { id:'j8', name:'2026-02-20 Monorepo构建', type:'journal', path:'journal/2026-02-20/monorepo-build.md', meta:{date:'2026-02-20'} },
 
-  // Atoms
-  { id:'a1', name:'VS-01 Vite dev server启动流程', type:'atom', path:'pyramid/analysis/atoms/2026-01/VS-01.md', atomType:'步骤' },
-  { id:'a2', name:'VS-02 模块依赖图构建', type:'atom', path:'pyramid/analysis/atoms/2026-01/VS-02.md', atomType:'事实' },
-  { id:'a3', name:'HM-01 HMR边界检测算法', type:'atom', path:'pyramid/analysis/atoms/2026-01/HM-01.md', atomType:'事实' },
-  { id:'a4', name:'HM-02 热更新传播链', type:'atom', path:'pyramid/analysis/atoms/2026-01/HM-02.md', atomType:'步骤' },
-  { id:'a5', name:'EB-01 ESBuild转译速度对比', type:'atom', path:'pyramid/analysis/atoms/2026-01/EB-01.md', atomType:'事实' },
-  { id:'a6', name:'EB-02 Go并发模型优势', type:'atom', path:'pyramid/analysis/atoms/2026-01/EB-02.md', atomType:'判断' },
-  { id:'a7', name:'RP-01 Rollup插件钩子生命周期', type:'atom', path:'pyramid/analysis/atoms/2026-02/RP-01.md', atomType:'步骤' },
-  { id:'a8', name:'RP-02 虚拟模块模式', type:'atom', path:'pyramid/analysis/atoms/2026-02/RP-02.md', atomType:'经验' },
-  { id:'a9', name:'DP-01 依赖扫描策略', type:'atom', path:'pyramid/analysis/atoms/2026-02/DP-01.md', atomType:'事实' },
-  { id:'a10', name:'DP-02 预构建缓存机制', type:'atom', path:'pyramid/analysis/atoms/2026-02/DP-02.md', atomType:'步骤' },
-  { id:'a11', name:'CS-01 PostCSS集成方式', type:'atom', path:'pyramid/analysis/atoms/2026-02/CS-01.md', atomType:'事实' },
-  { id:'a12', name:'SS-01 SSR入口处理', type:'atom', path:'pyramid/analysis/atoms/2026-02/SS-01.md', atomType:'步骤' },
-  { id:'a13', name:'MR-01 Workspace依赖解析', type:'atom', path:'pyramid/analysis/atoms/2026-02/MR-01.md', atomType:'经验' },
+  { id:'a1', name:'VS-01 Vite dev server启动流程', type:'atom', path:'pyramid/analysis/atoms/2026-01/VS-01.md', meta:{atomType:'步骤'} },
+  { id:'a2', name:'VS-02 模块依赖图构建', type:'atom', path:'pyramid/analysis/atoms/2026-01/VS-02.md', meta:{atomType:'事实'} },
+  { id:'a3', name:'HM-01 HMR边界检测算法', type:'atom', path:'pyramid/analysis/atoms/2026-01/HM-01.md', meta:{atomType:'事实'} },
+  { id:'a4', name:'HM-02 热更新传播链', type:'atom', path:'pyramid/analysis/atoms/2026-01/HM-02.md', meta:{atomType:'步骤'} },
+  { id:'a5', name:'EB-01 ESBuild转译速度对比', type:'atom', path:'pyramid/analysis/atoms/2026-01/EB-01.md', meta:{atomType:'事实'} },
+  { id:'a6', name:'EB-02 Go并发模型优势', type:'atom', path:'pyramid/analysis/atoms/2026-01/EB-02.md', meta:{atomType:'判断'} },
+  { id:'a7', name:'RP-01 Rollup插件钩子生命周期', type:'atom', path:'pyramid/analysis/atoms/2026-02/RP-01.md', meta:{atomType:'步骤'} },
+  { id:'a8', name:'RP-02 虚拟模块模式', type:'atom', path:'pyramid/analysis/atoms/2026-02/RP-02.md', meta:{atomType:'经验'} },
+  { id:'a9', name:'DP-01 依赖扫描策略', type:'atom', path:'pyramid/analysis/atoms/2026-02/DP-01.md', meta:{atomType:'事实'} },
+  { id:'a10', name:'DP-02 预构建缓存机制', type:'atom', path:'pyramid/analysis/atoms/2026-02/DP-02.md', meta:{atomType:'步骤'} },
+  { id:'a11', name:'CS-01 PostCSS集成方式', type:'atom', path:'pyramid/analysis/atoms/2026-02/CS-01.md', meta:{atomType:'事实'} },
+  { id:'a12', name:'SS-01 SSR入口处理', type:'atom', path:'pyramid/analysis/atoms/2026-02/SS-01.md', meta:{atomType:'步骤'} },
+  { id:'a13', name:'MR-01 Workspace依赖解析', type:'atom', path:'pyramid/analysis/atoms/2026-02/MR-01.md', meta:{atomType:'经验'} },
 
-  // Groups
-  { id:'g1', name:'G01-开发服务器核心机制', type:'group', path:'pyramid/analysis/groups/G01-dev-server.md', atomCount:4 },
-  { id:'g2', name:'G02-构建工具链对比', type:'group', path:'pyramid/analysis/groups/G02-build-tools.md', atomCount:3 },
-  { id:'g3', name:'G03-插件系统设计', type:'group', path:'pyramid/analysis/groups/G03-plugin-system.md', atomCount:3 },
-  { id:'g4', name:'G04-工程化实践', type:'group', path:'pyramid/analysis/groups/G04-engineering.md', atomCount:4 },
+  { id:'g1', name:'G01-开发服务器核心机制', type:'group', path:'pyramid/analysis/groups/G01-dev-server.md', meta:{gId:'G01',atomCount:4} },
+  { id:'g2', name:'G02-构建工具链对比', type:'group', path:'pyramid/analysis/groups/G02-build-tools.md', meta:{gId:'G02',atomCount:3} },
+  { id:'g3', name:'G03-插件系统设计', type:'group', path:'pyramid/analysis/groups/G03-plugin-system.md', meta:{gId:'G03',atomCount:3} },
+  { id:'g4', name:'G04-工程化实践', type:'group', path:'pyramid/analysis/groups/G04-engineering.md', meta:{gId:'G04',atomCount:4} },
 
-  // Synthesis
-  { id:'s1', name:'S1 Vite的核心竞争力在于开发体验', type:'synthesis', path:'pyramid/analysis/synthesis.md#S1', confidence:'高' },
-  { id:'s2', name:'S2 插件系统是生态繁荣的关键', type:'synthesis', path:'pyramid/analysis/synthesis.md#S2', confidence:'高' },
-  { id:'s3', name:'S3 预构建是性能与兼容的平衡', type:'synthesis', path:'pyramid/analysis/synthesis.md#S3', confidence:'中' },
+  { id:'s1', name:'S1 Vite的核心竞争力在于开发体验', type:'synthesis', path:'pyramid/analysis/synthesis.md#S1', meta:{sId:'S1',confidence:'高'} },
+  { id:'s2', name:'S2 插件系统是生态繁荣的关键', type:'synthesis', path:'pyramid/analysis/synthesis.md#S2', meta:{sId:'S2',confidence:'高'} },
+  { id:'s3', name:'S3 预构建是性能与兼容的平衡', type:'synthesis', path:'pyramid/analysis/synthesis.md#S3', meta:{sId:'S3',confidence:'中'} },
 
-  // Perspectives
-  { id:'p1', name:'P01-Vite架构深度解析', type:'perspective', path:'pyramid/structure/P01-vite-arch/', keyLines:5 },
-  { id:'p2', name:'P02-从Webpack迁移到Vite', type:'perspective', path:'pyramid/structure/P02-webpack-to-vite/', keyLines:4 },
+  { id:'p1', name:'P01-Vite架构深度解析', type:'perspective', path:'pyramid/structure/P01-vite-arch/', meta:{pId:'P01',keyLineCount:5} },
+  { id:'p2', name:'P02-从Webpack迁移到Vite', type:'perspective', path:'pyramid/structure/P02-webpack-to-vite/', meta:{pId:'P02',keyLineCount:4} },
 
-  // Outputs
-  { id:'o1', name:'Vite内部原理：从源码到实践', type:'output', path:'outputs/blog/vite-internals.md', format:'blog' },
-  { id:'o2', name:'迁移指南：Webpack→Vite', type:'output', path:'outputs/blog/migration-guide.md', format:'blog' },
-  { id:'o3', name:'Vite插件开发实战', type:'output', path:'outputs/practice-diary/plugin-dev.md', format:'practice-diary' },
+  { id:'o1', name:'Vite内部原理：从源码到实践', type:'output', path:'outputs/blog/vite-internals.md', meta:{template:'blog'} },
+  { id:'o2', name:'迁移指南：Webpack→Vite', type:'output', path:'outputs/blog/migration-guide.md', meta:{template:'blog'} },
+  { id:'o3', name:'Vite插件开发实战', type:'output', path:'outputs/practice-diary/plugin-dev.md', meta:{template:'practice-diary'} },
 ];
 
 const links = [
-  // journal → atom
   { source:'j1', target:'a1', type:'extract' },
   { source:'j1', target:'a2', type:'extract' },
   { source:'j2', target:'a3', type:'extract' },
@@ -536,7 +542,6 @@ const links = [
   { source:'j7', target:'a12', type:'extract' },
   { source:'j8', target:'a13', type:'extract' },
 
-  // atom → group
   { source:'a1', target:'g1', type:'classify' },
   { source:'a2', target:'g1', type:'classify' },
   { source:'a3', target:'g1', type:'classify' },
@@ -552,137 +557,31 @@ const links = [
   { source:'a13', target:'g4', type:'classify' },
   { source:'a11', target:'g4', type:'classify' },
 
-  // group → synthesis
   { source:'g1', target:'s1', type:'support' },
   { source:'g2', target:'s1', type:'support' },
   { source:'g3', target:'s2', type:'support' },
   { source:'g2', target:'s3', type:'support' },
   { source:'g4', target:'s3', type:'support' },
 
-  // synthesis → perspective
   { source:'s1', target:'p1', type:'structure' },
   { source:'s2', target:'p1', type:'structure' },
   { source:'s3', target:'p1', type:'structure' },
   { source:'s1', target:'p2', type:'structure' },
   { source:'s3', target:'p2', type:'structure' },
 
-  // perspective → output
   { source:'p1', target:'o1', type:'produce' },
   { source:'p2', target:'o2', type:'produce' },
   { source:'p1', target:'o3', type:'produce' },
   { source:'g3', target:'o3', type:'produce' },
 ];
 
-const linkTypeColors = {
-  extract: typeColors.atom,
-  classify: typeColors.group,
-  support: typeColors.synthesis,
-  structure: typeColors.perspective,
-  produce: typeColors.output,
-};
-
-// ── Setup ──
-const svg = d3.select('#graph');
-const width = document.querySelector('.main').clientWidth;
-const height = document.querySelector('.main').clientHeight;
-svg.attr('width', width).attr('height', height);
-
-const g = svg.append('g');
-
-const zoom = d3.zoom()
-  .scaleExtent([0.2, 4])
-  .on('zoom', e => g.attr('transform', e.transform));
-svg.call(zoom);
-
-// Arrow markers
-const defs = svg.append('defs');
-Object.entries(linkTypeColors).forEach(([type, color]) => {
-  defs.append('marker')
-    .attr('id', `arrow-${type}`)
-    .attr('viewBox', '0 -5 10 10')
-    .attr('refX', 20).attr('refY', 0)
-    .attr('markerWidth', 6).attr('markerHeight', 6)
-    .attr('orient', 'auto')
-    .append('path')
-    .attr('d', 'M0,-4L10,0L0,4')
-    .attr('fill', color)
-    .attr('opacity', 0.6);
-});
-
-// ── Simulation ──
-const simulation = d3.forceSimulation(nodes)
-  .force('link', d3.forceLink(links).id(d => d.id).distance(d => {
-    const s = d.source.type || d.source;
-    const t = d.target.type || d.target;
-    if (s === 'journal' && t === 'atom') return 60;
-    if (s === 'atom' && t === 'group') return 70;
-    return 90;
-  }))
-  .force('charge', d3.forceManyBody().strength(-180))
-  .force('center', d3.forceCenter(width / 2, height / 2))
-  .force('y', d3.forceY(d => {
-    const layers = { journal: 0.85, atom: 0.68, group: 0.50, synthesis: 0.33, perspective: 0.18, output: 0.05 };
-    return height * (layers[d.type] || 0.5);
-  }).strength(0.3))
-  .force('collision', d3.forceCollide(d => typeSizes[d.type] + 4));
-
-// ── Draw Links ──
-const linkGroup = g.append('g');
-const linkEls = linkGroup.selectAll('line')
-  .data(links).join('line')
-  .attr('stroke', d => linkTypeColors[d.type])
-  .attr('stroke-opacity', 0.25)
-  .attr('stroke-width', 1.5)
-  .attr('marker-end', d => `url(#arrow-${d.type})`);
-
-// ── Draw Nodes ──
-const nodeGroup = g.append('g');
-const nodeEls = nodeGroup.selectAll('g')
-  .data(nodes).join('g')
-  .attr('cursor', 'pointer')
-  .call(d3.drag()
-    .on('start', (e,d) => { if(!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
-    .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
-    .on('end', (e,d) => { if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; })
-  );
-
-nodeEls.append('circle')
-  .attr('r', d => typeSizes[d.type])
-  .attr('fill', d => typeColors[d.type])
-  .attr('fill-opacity', 0.85)
-  .attr('stroke', d => typeColors[d.type])
-  .attr('stroke-width', 2)
-  .attr('stroke-opacity', 0.3);
-
-nodeEls.append('circle')
-  .attr('r', d => typeSizes[d.type] + 8)
-  .attr('fill', d => typeColors[d.type])
-  .attr('fill-opacity', 0)
-  .attr('class', 'hover-ring');
-
-let showLabels = true;
-const labelEls = nodeEls.append('text')
-  .text(d => d.name.length > 18 ? d.name.slice(0,18)+'…' : d.name)
-  .attr('x', d => typeSizes[d.type] + 6)
-  .attr('y', 4)
-  .attr('font-size', '10px')
-  .attr('fill', '#94a3b8')
-  .attr('font-family', 'Noto Sans SC, sans-serif')
-  .attr('pointer-events', 'none');
-
-// ── Tick ──
-simulation.on('tick', () => {
-  linkEls
-    .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-  nodeEls.attr('transform', d => `translate(${d.x},${d.y})`);
-});
+function nid(n) { return typeof n === 'object' && n !== null ? n.id : n; }
 
 // ── Stats ──
 document.getElementById('stat-total').textContent = nodes.length;
 document.getElementById('stat-links').textContent = links.length;
 const connectedIds = new Set();
-links.forEach(l => { connectedIds.add(l.source.id || l.source); connectedIds.add(l.target.id || l.target); });
+links.forEach(l => { connectedIds.add(l.source); connectedIds.add(l.target); });
 const orphanCount = nodes.filter(n => !connectedIds.has(n.id)).length;
 document.getElementById('stat-orphan').textContent = orphanCount;
 const coverage = Math.round((connectedIds.size / nodes.length) * 100);
@@ -692,55 +591,171 @@ if (orphanCount > 0) {
   document.getElementById('orphanBanner').classList.add('show');
 }
 
+// ── 3D Graph ──
+const container = document.querySelector('.main');
+let activeChain = null;
+let searchQuery = '';
+let tooltipEnabled = true;
+let forceRunning = true;
+const activeTypes = new Set(['journal','atom','group','synthesis','perspective','output']);
+
+const Graph = ForceGraph3D()(document.getElementById('graph'))
+  .graphData({ nodes, links })
+  .nodeId('id')
+  .nodeLabel(null)
+  .nodeColor(d => typeColors[d.type])
+  .nodeVal(d => typeSizes[d.type])
+  .nodeOpacity(0.92)
+  .nodeResolution(12)
+  .linkSource('source')
+  .linkTarget('target')
+  .linkColor(d => linkTypeColors[d.type])
+  .linkDirectionalArrowLength(4)
+  .linkDirectionalArrowRelPos(1)
+  .linkOpacity(0.3)
+  .linkWidth(1.5)
+  .backgroundColor('#0a0e17')
+  .width(container.clientWidth)
+  .height(container.clientHeight)
+  .enableNodeDrag(true)
+  .enableNavigationControls(true);
+
+Graph.d3Force('y', d3.forceY().y(d => {
+  const layers = { journal: 200, atom: 100, group: 0, synthesis: -100, perspective: -200, output: -300 };
+  return layers[d.type] || 0;
+}).strength(0.3));
+
+Graph.d3Force('charge').strength(-90);
+
+// ── 3D Text Labels ──
+let showLabels = true;
+const maxLabelLen = 16;
+
+function makeLabelSprite(node) {
+  const text = node.name.length > maxLabelLen ? node.name.slice(0, maxLabelLen) + '\u2026' : node.name;
+  const sprite = new SpriteText(text);
+  sprite.color = '#94a3b8';
+  sprite.textHeight = 2.5;
+  sprite.fontFace = 'Noto Sans SC, system-ui, sans-serif';
+  sprite.backgroundColor = 'rgba(10,14,23,0.55)';
+  sprite.padding = 0.6;
+  sprite.borderRadius = 1;
+  sprite.material.depthWrite = false;
+  const r = Math.cbrt(typeSizes[node.type] || 5) * 4;
+  sprite.position.y = r + 3;
+  return sprite;
+}
+
+Graph
+  .nodeThreeObjectExtend(true)
+  .nodeThreeObject(node => showLabels ? makeLabelSprite(node) : undefined);
+
 // ── Tooltip ──
 const tooltip = document.getElementById('tooltip');
-nodeEls.on('mouseover', (e, d) => {
-  tooltip.querySelector('.tt-type').textContent = typeLabels[d.type];
-  tooltip.querySelector('.tt-type').style.color = typeColors[d.type];
-  tooltip.querySelector('.tt-name').textContent = d.name;
-  tooltip.querySelector('.tt-path').textContent = d.path;
-  tooltip.classList.add('visible');
+let hoveredNode = null;
 
-  d3.select(e.currentTarget).select('circle').attr('fill-opacity', 1).attr('stroke-width', 3);
-  highlightConnected(d);
-}).on('mousemove', (e) => {
-  const rect = document.querySelector('.main').getBoundingClientRect();
-  tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
-  tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
-}).on('mouseout', (e, d) => {
-  tooltip.classList.remove('visible');
-  d3.select(e.currentTarget).select('circle').attr('fill-opacity', 0.85).attr('stroke-width', 2);
-  resetHighlight();
+Graph.onNodeHover(node => {
+  hoveredNode = node;
+  if (!tooltipEnabled) { tooltip.classList.remove('visible'); return; }
+  if (node) {
+    tooltip.querySelector('.tt-type').textContent = typeLabels[node.type];
+    tooltip.querySelector('.tt-type').style.color = typeColors[node.type];
+    tooltip.querySelector('.tt-name').textContent = node.name;
+    tooltip.querySelector('.tt-path').textContent = node.path;
+    tooltip.classList.add('visible');
+    document.getElementById('graph').style.cursor = 'pointer';
+  } else {
+    tooltip.classList.remove('visible');
+    document.getElementById('graph').style.cursor = 'default';
+  }
 });
 
-function highlightConnected(d) {
-  const connected = new Set([d.id]);
-  links.forEach(l => {
-    const sid = l.source.id || l.source;
-    const tid = l.target.id || l.target;
-    if (sid === d.id) connected.add(tid);
-    if (tid === d.id) connected.add(sid);
-  });
-  nodeEls.style('opacity', n => connected.has(n.id) ? 1 : 0.12);
-  linkEls
-    .attr('stroke-opacity', l => {
-      const sid = l.source.id || l.source;
-      const tid = l.target.id || l.target;
-      return (sid === d.id || tid === d.id) ? 0.7 : 0.04;
-    })
-    .attr('stroke-width', l => {
-      const sid = l.source.id || l.source;
-      const tid = l.target.id || l.target;
-      return (sid === d.id || tid === d.id) ? 2.5 : 1;
-    });
-}
-function resetHighlight() {
-  nodeEls.style('opacity', 1);
-  linkEls.attr('stroke-opacity', 0.25).attr('stroke-width', 1.5);
+container.addEventListener('mousemove', e => {
+  if (!hoveredNode || !tooltipEnabled) return;
+  const rect = container.getBoundingClientRect();
+  tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+  tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+});
+
+// ── Trace full chain (BFS) ──
+function traceFullChain(nodeId) {
+  const chain = new Set([nodeId]);
+  let frontier = [nodeId];
+  while (frontier.length) {
+    const next = [];
+    for (const id of frontier) {
+      links.forEach(l => {
+        const sid = nid(l.source), tid = nid(l.target);
+        if (tid === id && !chain.has(sid)) { chain.add(sid); next.push(sid); }
+      });
+    }
+    frontier = next;
+  }
+  frontier = [nodeId];
+  while (frontier.length) {
+    const next = [];
+    for (const id of frontier) {
+      links.forEach(l => {
+        const sid = nid(l.source), tid = nid(l.target);
+        if (sid === id && !chain.has(tid)) { chain.add(tid); next.push(tid); }
+      });
+    }
+    frontier = next;
+  }
+  return chain;
 }
 
-// ── Click → Detail Panel ──
-nodeEls.on('click', (e, d) => {
+function applyChainHighlight(chain) {
+  Graph
+    .nodeColor(d => chain.has(d.id) ? typeColors[d.type] : '#1a2332')
+    .nodeOpacity(d => chain.has(d.id) ? 0.95 : 0.15)
+    .linkColor(l => {
+      const sid = nid(l.source), tid = nid(l.target);
+      return (chain.has(sid) && chain.has(tid)) ? linkTypeColors[l.type] : '#0d1520';
+    })
+    .linkOpacity(l => {
+      const sid = nid(l.source), tid = nid(l.target);
+      return (chain.has(sid) && chain.has(tid)) ? 0.7 : 0.03;
+    });
+}
+
+function clearTraceHighlight() {
+  activeChain = null;
+  if (searchQuery) { applySearchHighlight(); return; }
+  Graph
+    .nodeColor(d => typeColors[d.type])
+    .nodeOpacity(0.92)
+    .linkColor(d => linkTypeColors[d.type])
+    .linkOpacity(0.3);
+}
+
+// ── Node click → detail + trace ──
+Graph.onNodeClick(node => {
+  showDetail(node);
+  activeChain = traceFullChain(node.id);
+  applyChainHighlight(activeChain);
+});
+
+Graph.onBackgroundClick(() => {
+  clearTraceHighlight();
+  document.getElementById('detailPanel').classList.remove('open');
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    clearTraceHighlight();
+    document.getElementById('detailPanel').classList.remove('open');
+  }
+});
+
+// ── Detail Panel ──
+const metaKeyLabels = {
+  date: '日期', atomType: '主要类型', abbrev: '缩写', month: '月份',
+  gId: '编号', atomCount: 'Atoms 数量', sId: '编号', confidence: '置信度',
+  pId: '编号', keyLineCount: 'Key Lines', template: '产出模板'
+};
+
+function showDetail(d) {
   const panel = document.getElementById('detailPanel');
   const badge = document.getElementById('detailBadge');
   badge.textContent = typeLabels[d.type];
@@ -751,31 +766,53 @@ nodeEls.on('click', (e, d) => {
 
   const meta = document.getElementById('detailMeta');
   let metaHTML = `<div class="meta-row"><span class="meta-label">类型</span><span class="meta-value">${typeLabels[d.type]}</span></div>`;
-  if (d.date) metaHTML += `<div class="meta-row"><span class="meta-label">日期</span><span class="meta-value">${d.date}</span></div>`;
-  if (d.atomType) metaHTML += `<div class="meta-row"><span class="meta-label">信息类型</span><span class="meta-value">${d.atomType}</span></div>`;
-  if (d.atomCount) metaHTML += `<div class="meta-row"><span class="meta-label">包含 Atoms</span><span class="meta-value">${d.atomCount}</span></div>`;
-  if (d.confidence) metaHTML += `<div class="meta-row"><span class="meta-label">置信度</span><span class="meta-value">${d.confidence}</span></div>`;
-  if (d.keyLines) metaHTML += `<div class="meta-row"><span class="meta-label">Key Lines</span><span class="meta-value">${d.keyLines}</span></div>`;
-  if (d.format) metaHTML += `<div class="meta-row"><span class="meta-label">产出格式</span><span class="meta-value">${d.format}</span></div>`;
+  if (d.meta) {
+    for (const [k, v] of Object.entries(d.meta)) {
+      if (v === null || v === undefined) continue;
+      const label = metaKeyLabels[k] || k;
+      metaHTML += `<div class="meta-row"><span class="meta-label">${label}</span><span class="meta-value">${v}</span></div>`;
+    }
+  }
   meta.innerHTML = metaHTML;
 
-  const incoming = links.filter(l => (l.target.id||l.target) === d.id);
-  const outgoing = links.filter(l => (l.source.id||l.source) === d.id);
+  const incoming = links.filter(l => nid(l.target) === d.id);
+  const outgoing = links.filter(l => nid(l.source) === d.id);
 
   const inList = document.getElementById('detailIncoming');
   inList.innerHTML = incoming.length ? incoming.map(l => {
-    const src = nodes.find(n => n.id === (l.source.id||l.source));
-    return `<li><span class="ref-dot" style="background:${typeColors[src.type]}"></span><span class="ref-name">${src.name}</span><span class="ref-arrow">←</span></li>`;
-  }).join('') : '<li style="color:var(--text-muted);background:none">无</li>';
+    const src = nodes.find(n => n.id === nid(l.source));
+    if (!src) return '';
+    return `<li data-node-id="${src.id}"><span class="ref-dot" style="background:${typeColors[src.type]}"></span><span class="ref-name">${src.name}</span><span class="ref-arrow">\u2190</span></li>`;
+  }).join('') : '<li style="color:var(--text-muted);background:none">\u65E0</li>';
 
   const outList = document.getElementById('detailOutgoing');
   outList.innerHTML = outgoing.length ? outgoing.map(l => {
-    const tgt = nodes.find(n => n.id === (l.target.id||l.target));
-    return `<li><span class="ref-dot" style="background:${typeColors[tgt.type]}"></span><span class="ref-name">${tgt.name}</span><span class="ref-arrow">→</span></li>`;
-  }).join('') : '<li style="color:var(--text-muted);background:none">无</li>';
+    const tgt = nodes.find(n => n.id === nid(l.target));
+    if (!tgt) return '';
+    return `<li data-node-id="${tgt.id}"><span class="ref-dot" style="background:${typeColors[tgt.type]}"></span><span class="ref-name">${tgt.name}</span><span class="ref-arrow">\u2192</span></li>`;
+  }).join('') : '<li style="color:var(--text-muted);background:none">\u65E0</li>';
+
+  panel.querySelectorAll('.ref-list li[data-node-id]').forEach(li => {
+    li.addEventListener('click', () => navigateToNode(li.dataset.nodeId));
+  });
 
   panel.classList.add('open');
-});
+}
+
+function navigateToNode(nodeId) {
+  const target = nodes.find(n => n.id === nodeId);
+  if (!target || target.x === undefined) return;
+  const dist = 150;
+  Graph.cameraPosition(
+    { x: target.x + dist, y: target.y + dist * 0.5, z: target.z + dist },
+    target, 1000
+  );
+  setTimeout(() => {
+    showDetail(target);
+    activeChain = traceFullChain(target.id);
+    applyChainHighlight(activeChain);
+  }, 1100);
+}
 
 document.getElementById('closeDetail').addEventListener('click', () => {
   document.getElementById('detailPanel').classList.remove('open');
@@ -785,46 +822,92 @@ document.getElementById('closeDetail').addEventListener('click', () => {
 document.querySelectorAll('.chip').forEach(chip => {
   chip.addEventListener('click', () => {
     chip.classList.toggle('active');
-    const activeTypes = new Set([...document.querySelectorAll('.chip.active')].map(c => c.dataset.type));
-    nodeEls.style('display', d => activeTypes.has(d.type) ? null : 'none');
-    linkEls.style('display', l => {
-      const sType = (l.source.type || nodes.find(n=>n.id===l.source)?.type);
-      const tType = (l.target.type || nodes.find(n=>n.id===l.target)?.type);
-      return activeTypes.has(sType) && activeTypes.has(tType) ? null : 'none';
-    });
+    activeTypes.clear();
+    document.querySelectorAll('.chip.active').forEach(c => activeTypes.add(c.dataset.type));
+    Graph
+      .nodeVisibility(d => activeTypes.has(d.type))
+      .linkVisibility(l => {
+        const st = (typeof l.source === 'object') ? l.source.type : '';
+        const tt = (typeof l.target === 'object') ? l.target.type : '';
+        return activeTypes.has(st) && activeTypes.has(tt);
+      });
   });
 });
 
 // ── Zoom Controls ──
-document.getElementById('zoomIn').addEventListener('click', () => svg.transition().duration(300).call(zoom.scaleBy, 1.4));
-document.getElementById('zoomOut').addEventListener('click', () => svg.transition().duration(300).call(zoom.scaleBy, 0.7));
-document.getElementById('zoomReset').addEventListener('click', () => svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity));
+let initialDistance = 600;
+setTimeout(() => {
+  const pos = Graph.cameraPosition();
+  initialDistance = Math.sqrt(pos.x ** 2 + pos.y ** 2 + pos.z ** 2) || 600;
+}, 800);
+
+document.getElementById('zoomIn').addEventListener('click', () => {
+  const pos = Graph.cameraPosition();
+  Graph.cameraPosition({ x: pos.x * 0.7, y: pos.y * 0.7, z: pos.z * 0.7 }, null, 300);
+});
+document.getElementById('zoomOut').addEventListener('click', () => {
+  const pos = Graph.cameraPosition();
+  Graph.cameraPosition({ x: pos.x * 1.4, y: pos.y * 1.4, z: pos.z * 1.4 }, null, 300);
+});
+document.getElementById('zoomReset').addEventListener('click', () => {
+  Graph.cameraPosition({ x: 0, y: 0, z: initialDistance }, { x: 0, y: 0, z: 0 }, 500);
+});
 
 // ── Toggle Labels ──
 document.getElementById('toggleLabels').addEventListener('click', () => {
   showLabels = !showLabels;
-  labelEls.style('display', showLabels ? null : 'none');
+  document.getElementById('toggleLabels').classList.toggle('active-toggle', !showLabels);
+  Graph.nodeThreeObject(node => showLabels ? makeLabelSprite(node) : undefined);
 });
 
 // ── Toggle Force ──
-let forceRunning = true;
-document.getElementById('toggleForce').addEventListener('click', () => {
+const forceBtn = document.getElementById('toggleForce');
+forceBtn.addEventListener('click', () => {
   forceRunning = !forceRunning;
-  if (forceRunning) simulation.alpha(0.3).restart();
-  else simulation.stop();
+  if (forceRunning) {
+    Graph.cooldownTicks(Infinity).d3ReheatSimulation();
+    forceBtn.classList.remove('active-toggle');
+  } else {
+    Graph.cooldownTicks(0);
+    forceBtn.classList.add('active-toggle');
+  }
 });
 
 // ── Search ──
-document.getElementById('searchInput').addEventListener('input', (e) => {
-  const q = e.target.value.toLowerCase().trim();
-  if (!q) { resetHighlight(); return; }
+function applySearchHighlight() {
+  if (!searchQuery) return;
   const matched = new Set();
-  nodes.forEach(n => { if (n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q)) matched.add(n.id); });
-  nodeEls.style('opacity', d => matched.has(d.id) ? 1 : 0.08);
-  linkEls.attr('stroke-opacity', l => {
-    const sid = l.source.id||l.source, tid = l.target.id||l.target;
-    return (matched.has(sid) || matched.has(tid)) ? 0.5 : 0.03;
+  nodes.forEach(n => {
+    if (n.name.toLowerCase().includes(searchQuery) || n.path.toLowerCase().includes(searchQuery))
+      matched.add(n.id);
   });
+  Graph
+    .nodeColor(d => matched.has(d.id) ? typeColors[d.type] : '#1a2332')
+    .nodeOpacity(d => matched.has(d.id) ? 0.95 : 0.12)
+    .linkColor(l => {
+      const sid = nid(l.source), tid = nid(l.target);
+      return (matched.has(sid) || matched.has(tid)) ? linkTypeColors[l.type] : '#0d1520';
+    })
+    .linkOpacity(l => {
+      const sid = nid(l.source), tid = nid(l.target);
+      return (matched.has(sid) || matched.has(tid)) ? 0.6 : 0.02;
+    });
+}
+
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchQuery = e.target.value.toLowerCase().trim();
+  if (!searchQuery) {
+    if (activeChain) applyChainHighlight(activeChain);
+    else clearTraceHighlight();
+    return;
+  }
+  activeChain = null;
+  applySearchHighlight();
+});
+
+// ── Resize ──
+window.addEventListener('resize', () => {
+  Graph.width(container.clientWidth).height(container.clientHeight);
 });
 </script>
 </body>

@@ -169,7 +169,43 @@
     position: relative;
     overflow: hidden;
   }
-  #graph { width:100%; height:100%; }
+  #graph { width: 100%; height: 100%; }
+
+  .empty-state {
+    display: none;
+    position: absolute;
+    inset: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 5;
+    text-align: center;
+    animation: emptyFadeIn 0.8s ease;
+  }
+  .empty-state h2 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-dim);
+  }
+  .empty-state p {
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+  .empty-state code {
+    display: inline-block;
+    padding: 8px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--accent);
+  }
+  @keyframes emptyFadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
   .graph-controls {
     position: absolute;
@@ -182,6 +218,7 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 6px;
+    z-index: 6;
   }
   .ctrl-btn {
     width: 36px; height: 36px;
@@ -197,16 +234,20 @@
     transition: all 0.15s;
   }
   .ctrl-btn:hover { background:var(--bg-card); color:var(--text); }
+  .ctrl-btn.active-toggle { background:var(--bg-card); color:var(--accent); }
   .ctrl-btn svg { width:18px; height:18px; }
 
   .detail-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
     width: 320px;
-    min-width: 320px;
+    height: 100vh;
     background: var(--bg-panel);
     border-left: 1px solid var(--border);
     transform: translateX(100%);
     transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
-    z-index: 10;
+    z-index: 20;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
@@ -335,7 +376,7 @@
   <aside class="sidebar">
     <div class="sidebar-header">
       <h1 id="kbName">Knowledge Prism</h1>
-      <p>知识图谱 · 文档关系可视化</p>
+      <p>知识图谱 · 3D 文档关系可视化</p>
     </div>
 
     <div class="search-box">
@@ -400,8 +441,14 @@
   </aside>
 
   <div class="main">
-    <svg id="graph"></svg>
-    <div class="graph-controls">
+    <div id="graph"></div>
+    <div class="empty-state" id="emptyState">
+      <h2>暂无文档关系</h2>
+      <p>运行以下命令处理知识库并生成图谱：</p>
+      <code>npx js-knowledge-prism process</code>
+      <p style="margin-top:8px;font-size:12px;color:var(--text-muted)">然后重新运行 <code style="padding:2px 6px;font-size:11px">graph</code> 命令</p>
+    </div>
+    <div class="graph-controls" id="graphControls">
       <button class="ctrl-btn" id="zoomIn" title="放大">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
       </button>
@@ -411,7 +458,7 @@
       <button class="ctrl-btn" id="zoomReset" title="重置视图">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
       </button>
-      <button class="ctrl-btn" id="toggleLabels" title="切换标签">
+      <button class="ctrl-btn" id="toggleLabels" title="切换 Tooltip 显示">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
       </button>
       <button class="ctrl-btn" id="toggleForce" title="暂停/恢复力模拟">
@@ -449,10 +496,13 @@
   </aside>
 </div>
 
-<script src="https://unpkg.com/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three-spritetext"></script>
+<script src="https://unpkg.com/d3-force-3d"></script>
+<script src="https://unpkg.com/3d-force-graph"></script>
 <script>
 const graphData = /*__GRAPH_DATA__*/{nodes:[],links:[]};
-const graphStats = /*__GRAPH_STATS__*/{totalNodes:0,totalLinks:0,orphanCount:0,coverage:0};
+const graphStats = /*__GRAPH_STATS__*/{totalNodes:0,totalLinks:0,orphanCount:0,coverage:0,isEmpty:false,hasNoLinks:false};
 const kbName = /*__KB_NAME__*/"Knowledge Prism";
 
 const { nodes, links } = graphData;
@@ -466,7 +516,7 @@ const typeLabels = {
   synthesis: 'Synthesis', perspective: '视角', output: 'Output'
 };
 const typeSizes = {
-  journal: 6, atom: 5, group: 8, synthesis: 12, perspective: 10, output: 9
+  journal: 4, atom: 3, group: 6, synthesis: 10, perspective: 8, output: 7
 };
 const linkTypeColors = {
   extract: typeColors.atom,
@@ -479,7 +529,6 @@ const linkTypeColors = {
 document.getElementById('kbName').textContent = kbName;
 document.getElementById('sidebarFooter').textContent = kbName + ' Graph · ' + new Date().toISOString().slice(0, 10);
 
-// Stats
 document.getElementById('stat-total').textContent = graphStats.totalNodes;
 document.getElementById('stat-links').textContent = graphStats.totalLinks;
 document.getElementById('stat-orphan').textContent = graphStats.orphanCount;
@@ -489,244 +538,350 @@ if (graphStats.orphanCount > 0) {
   document.getElementById('orphanBanner').classList.add('show');
 }
 
-// SVG setup
-const svg = d3.select('#graph');
-const width = document.querySelector('.main').clientWidth;
-const height = document.querySelector('.main').clientHeight;
-svg.attr('width', width).attr('height', height);
-const g = svg.append('g');
+// ---------- Empty state ----------
 
-const zoom = d3.zoom()
-  .scaleExtent([0.1, 5])
-  .on('zoom', e => g.attr('transform', e.transform));
-svg.call(zoom);
-
-const defs = svg.append('defs');
-Object.entries(linkTypeColors).forEach(([type, color]) => {
-  defs.append('marker')
-    .attr('id', `arrow-${type}`)
-    .attr('viewBox', '0 -5 10 10')
-    .attr('refX', 20).attr('refY', 0)
-    .attr('markerWidth', 6).attr('markerHeight', 6)
-    .attr('orient', 'auto')
-    .append('path')
-    .attr('d', 'M0,-4L10,0L0,4')
-    .attr('fill', color)
-    .attr('opacity', 0.6);
-});
-
-// Adaptive force parameters based on node count
-const chargeStrength = nodes.length > 100 ? -80 : nodes.length > 50 ? -120 : -180;
-const linkDist = nodes.length > 100 ? 40 : nodes.length > 50 ? 55 : 70;
-
-const simulation = d3.forceSimulation(nodes)
-  .force('link', d3.forceLink(links).id(d => d.id).distance(d => {
-    const s = typeof d.source === 'object' ? d.source.type : '';
-    const t = typeof d.target === 'object' ? d.target.type : '';
-    if (s === 'journal' && t === 'atom') return linkDist * 0.85;
-    if (s === 'atom' && t === 'group') return linkDist;
-    return linkDist * 1.3;
-  }))
-  .force('charge', d3.forceManyBody().strength(chargeStrength))
-  .force('center', d3.forceCenter(width / 2, height / 2))
-  .force('y', d3.forceY(d => {
-    const layers = { journal: 0.85, atom: 0.68, group: 0.50, synthesis: 0.33, perspective: 0.18, output: 0.05 };
-    return height * (layers[d.type] || 0.5);
-  }).strength(0.3))
-  .force('collision', d3.forceCollide(d => typeSizes[d.type] + 4));
-
-const linkGroup = g.append('g');
-const linkEls = linkGroup.selectAll('line')
-  .data(links).join('line')
-  .attr('stroke', d => linkTypeColors[d.type])
-  .attr('stroke-opacity', 0.25)
-  .attr('stroke-width', 1.5)
-  .attr('marker-end', d => `url(#arrow-${d.type})`);
-
-const nodeGroup = g.append('g');
-const nodeEls = nodeGroup.selectAll('g')
-  .data(nodes).join('g')
-  .attr('cursor', 'pointer')
-  .call(d3.drag()
-    .on('start', (e,d) => { if(!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
-    .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
-    .on('end', (e,d) => { if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; })
-  );
-
-nodeEls.append('circle')
-  .attr('r', d => typeSizes[d.type])
-  .attr('fill', d => typeColors[d.type])
-  .attr('fill-opacity', 0.85)
-  .attr('stroke', d => typeColors[d.type])
-  .attr('stroke-width', 2)
-  .attr('stroke-opacity', 0.3);
-
-nodeEls.append('circle')
-  .attr('r', d => typeSizes[d.type] + 8)
-  .attr('fill', d => typeColors[d.type])
-  .attr('fill-opacity', 0)
-  .attr('class', 'hover-ring');
-
-let showLabels = true;
-const maxLabelLen = nodes.length > 80 ? 14 : 18;
-const labelEls = nodeEls.append('text')
-  .text(d => d.name.length > maxLabelLen ? d.name.slice(0, maxLabelLen) + '…' : d.name)
-  .attr('x', d => typeSizes[d.type] + 6)
-  .attr('y', 4)
-  .attr('font-size', '10px')
-  .attr('fill', '#94a3b8')
-  .attr('font-family', 'Noto Sans SC, sans-serif')
-  .attr('pointer-events', 'none');
-
-simulation.on('tick', () => {
-  linkEls
-    .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-  nodeEls.attr('transform', d => `translate(${d.x},${d.y})`);
-});
-
-// Tooltip
-const tooltip = document.getElementById('tooltip');
-nodeEls.on('mouseover', (e, d) => {
-  tooltip.querySelector('.tt-type').textContent = typeLabels[d.type];
-  tooltip.querySelector('.tt-type').style.color = typeColors[d.type];
-  tooltip.querySelector('.tt-name').textContent = d.name;
-  tooltip.querySelector('.tt-path').textContent = d.path;
-  tooltip.classList.add('visible');
-  d3.select(e.currentTarget).select('circle').attr('fill-opacity', 1).attr('stroke-width', 3);
-  highlightConnected(d);
-}).on('mousemove', (e) => {
-  const rect = document.querySelector('.main').getBoundingClientRect();
-  tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
-  tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
-}).on('mouseout', (e) => {
-  tooltip.classList.remove('visible');
-  d3.select(e.currentTarget).select('circle').attr('fill-opacity', 0.85).attr('stroke-width', 2);
-  resetHighlight();
-});
-
-function highlightConnected(d) {
-  const connected = new Set([d.id]);
-  links.forEach(l => {
-    const sid = l.source.id || l.source;
-    const tid = l.target.id || l.target;
-    if (sid === d.id) connected.add(tid);
-    if (tid === d.id) connected.add(sid);
-  });
-  nodeEls.style('opacity', n => connected.has(n.id) ? 1 : 0.12);
-  linkEls
-    .attr('stroke-opacity', l => {
-      const sid = l.source.id || l.source;
-      const tid = l.target.id || l.target;
-      return (sid === d.id || tid === d.id) ? 0.7 : 0.04;
-    })
-    .attr('stroke-width', l => {
-      const sid = l.source.id || l.source;
-      const tid = l.target.id || l.target;
-      return (sid === d.id || tid === d.id) ? 2.5 : 1;
-    });
-}
-function resetHighlight() {
-  nodeEls.style('opacity', 1);
-  linkEls.attr('stroke-opacity', 0.25).attr('stroke-width', 1.5);
+if (nodes.length === 0) {
+  document.getElementById('emptyState').style.display = 'flex';
+  document.getElementById('graphControls').style.display = 'none';
 }
 
-// Detail Panel
-const metaKeyLabels = {
-  date: '日期', atomType: '主要类型', abbrev: '缩写', month: '月份',
-  gId: '编号', atomCount: 'Atoms 数量', sId: '编号', confidence: '置信度',
-  pId: '编号', keyLineCount: 'Key Lines', template: '产出模板'
-};
+// ---------- 3D Force Graph ----------
 
-nodeEls.on('click', (e, d) => {
-  const panel = document.getElementById('detailPanel');
-  const badge = document.getElementById('detailBadge');
-  badge.textContent = typeLabels[d.type];
-  badge.style.background = typeColors[d.type] + '20';
-  badge.style.color = typeColors[d.type];
-  document.getElementById('detailTitle').textContent = d.name;
-  document.getElementById('detailPath').textContent = d.path;
-
-  const meta = document.getElementById('detailMeta');
-  let metaHTML = `<div class="meta-row"><span class="meta-label">类型</span><span class="meta-value">${typeLabels[d.type]}</span></div>`;
-  if (d.meta) {
-    for (const [k, v] of Object.entries(d.meta)) {
-      if (v === null || v === undefined) continue;
-      const label = metaKeyLabels[k] || k;
-      metaHTML += `<div class="meta-row"><span class="meta-label">${label}</span><span class="meta-value">${v}</span></div>`;
-    }
-  }
-  meta.innerHTML = metaHTML;
-
-  const incoming = links.filter(l => (l.target.id||l.target) === d.id);
-  const outgoing = links.filter(l => (l.source.id||l.source) === d.id);
-
-  const inList = document.getElementById('detailIncoming');
-  inList.innerHTML = incoming.length ? incoming.map(l => {
-    const src = nodes.find(n => n.id === (l.source.id||l.source));
-    if (!src) return '';
-    return `<li><span class="ref-dot" style="background:${typeColors[src.type]}"></span><span class="ref-name">${src.name}</span><span class="ref-arrow">\u2190</span></li>`;
-  }).join('') : '<li style="color:var(--text-muted);background:none">\u65E0</li>';
-
-  const outList = document.getElementById('detailOutgoing');
-  outList.innerHTML = outgoing.length ? outgoing.map(l => {
-    const tgt = nodes.find(n => n.id === (l.target.id||l.target));
-    if (!tgt) return '';
-    return `<li><span class="ref-dot" style="background:${typeColors[tgt.type]}"></span><span class="ref-name">${tgt.name}</span><span class="ref-arrow">\u2192</span></li>`;
-  }).join('') : '<li style="color:var(--text-muted);background:none">\u65E0</li>';
-
-  panel.classList.add('open');
-});
-
-document.getElementById('closeDetail').addEventListener('click', () => {
-  document.getElementById('detailPanel').classList.remove('open');
-});
-
-// Filter Chips
-document.querySelectorAll('.chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    chip.classList.toggle('active');
-    const activeTypes = new Set([...document.querySelectorAll('.chip.active')].map(c => c.dataset.type));
-    nodeEls.style('display', d => activeTypes.has(d.type) ? null : 'none');
-    linkEls.style('display', l => {
-      const sType = l.source.type;
-      const tType = l.target.type;
-      return activeTypes.has(sType) && activeTypes.has(tType) ? null : 'none';
-    });
-  });
-});
-
-// Zoom Controls
-document.getElementById('zoomIn').addEventListener('click', () => svg.transition().duration(300).call(zoom.scaleBy, 1.4));
-document.getElementById('zoomOut').addEventListener('click', () => svg.transition().duration(300).call(zoom.scaleBy, 0.7));
-document.getElementById('zoomReset').addEventListener('click', () => svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity));
-
-// Toggle Labels
-document.getElementById('toggleLabels').addEventListener('click', () => {
-  showLabels = !showLabels;
-  labelEls.style('display', showLabels ? null : 'none');
-});
-
-// Toggle Force
+const container = document.querySelector('.main');
+let Graph = null;
+let activeChain = null;
+let searchQuery = '';
+let tooltipEnabled = true;
 let forceRunning = true;
-document.getElementById('toggleForce').addEventListener('click', () => {
-  forceRunning = !forceRunning;
-  if (forceRunning) simulation.alpha(0.3).restart();
-  else simulation.stop();
-});
+const activeTypes = new Set(['journal','atom','group','synthesis','perspective','output']);
 
-// Search
-document.getElementById('searchInput').addEventListener('input', (e) => {
-  const q = e.target.value.toLowerCase().trim();
-  if (!q) { resetHighlight(); return; }
-  const matched = new Set();
-  nodes.forEach(n => { if (n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q)) matched.add(n.id); });
-  nodeEls.style('opacity', d => matched.has(d.id) ? 1 : 0.08);
-  linkEls.attr('stroke-opacity', l => {
-    const sid = l.source.id||l.source, tid = l.target.id||l.target;
-    return (matched.has(sid) || matched.has(tid)) ? 0.5 : 0.03;
+function nid(n) { return typeof n === 'object' && n !== null ? n.id : n; }
+
+if (nodes.length > 0) {
+  Graph = ForceGraph3D()(document.getElementById('graph'))
+    .graphData({ nodes, links })
+    .nodeId('id')
+    .nodeLabel(null)
+    .nodeColor(d => typeColors[d.type])
+    .nodeVal(d => typeSizes[d.type])
+    .nodeOpacity(0.92)
+    .nodeResolution(12)
+    .linkSource('source')
+    .linkTarget('target')
+    .linkColor(d => linkTypeColors[d.type])
+    .linkDirectionalArrowLength(4)
+    .linkDirectionalArrowRelPos(1)
+    .linkOpacity(0.3)
+    .linkWidth(1.5)
+    .backgroundColor('#0a0e17')
+    .width(container.clientWidth)
+    .height(container.clientHeight)
+    .enableNodeDrag(true)
+    .enableNavigationControls(true);
+
+  // Layer Y-axis force: pyramid layout
+  Graph.d3Force('y', d3.forceY().y(d => {
+    const layers = { journal: 200, atom: 100, group: 0, synthesis: -100, perspective: -200, output: -300 };
+    return layers[d.type] || 0;
+  }).strength(0.3));
+
+  const chargeStrength = nodes.length > 100 ? -40 : nodes.length > 50 ? -60 : -90;
+  Graph.d3Force('charge').strength(chargeStrength);
+
+  // ---------- 3D Text Labels ----------
+
+  let showLabels = true;
+  const maxLabelLen = nodes.length > 80 ? 12 : 16;
+
+  function makeLabelSprite(node) {
+    const text = node.name.length > maxLabelLen ? node.name.slice(0, maxLabelLen) + '\u2026' : node.name;
+    const sprite = new SpriteText(text);
+    sprite.color = '#94a3b8';
+    sprite.textHeight = 2.5;
+    sprite.fontFace = 'Noto Sans SC, system-ui, sans-serif';
+    sprite.backgroundColor = 'rgba(10,14,23,0.55)';
+    sprite.padding = 0.6;
+    sprite.borderRadius = 1;
+    sprite.material.depthWrite = false;
+    const r = Math.cbrt(typeSizes[node.type] || 5) * 4;
+    sprite.position.y = r + 3;
+    return sprite;
+  }
+
+  Graph
+    .nodeThreeObjectExtend(true)
+    .nodeThreeObject(node => showLabels ? makeLabelSprite(node) : undefined);
+
+  // ---------- Tooltip ----------
+
+  const tooltip = document.getElementById('tooltip');
+  let hoveredNode = null;
+
+  Graph.onNodeHover(node => {
+    hoveredNode = node;
+    if (!tooltipEnabled) { tooltip.classList.remove('visible'); return; }
+    if (node) {
+      tooltip.querySelector('.tt-type').textContent = typeLabels[node.type];
+      tooltip.querySelector('.tt-type').style.color = typeColors[node.type];
+      tooltip.querySelector('.tt-name').textContent = node.name;
+      tooltip.querySelector('.tt-path').textContent = node.path;
+      tooltip.classList.add('visible');
+      document.getElementById('graph').style.cursor = 'pointer';
+    } else {
+      tooltip.classList.remove('visible');
+      document.getElementById('graph').style.cursor = 'default';
+    }
   });
-});
+
+  container.addEventListener('mousemove', e => {
+    if (!hoveredNode || !tooltipEnabled) return;
+    const rect = container.getBoundingClientRect();
+    tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+    tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+  });
+
+  // ---------- Trace full chain (BFS) ----------
+
+  function traceFullChain(nodeId) {
+    const chain = new Set([nodeId]);
+    let frontier = [nodeId];
+    while (frontier.length) {
+      const next = [];
+      for (const id of frontier) {
+        links.forEach(l => {
+          const sid = nid(l.source), tid = nid(l.target);
+          if (tid === id && !chain.has(sid)) { chain.add(sid); next.push(sid); }
+        });
+      }
+      frontier = next;
+    }
+    frontier = [nodeId];
+    while (frontier.length) {
+      const next = [];
+      for (const id of frontier) {
+        links.forEach(l => {
+          const sid = nid(l.source), tid = nid(l.target);
+          if (sid === id && !chain.has(tid)) { chain.add(tid); next.push(tid); }
+        });
+      }
+      frontier = next;
+    }
+    return chain;
+  }
+
+  function applyChainHighlight(chain) {
+    Graph
+      .nodeColor(d => chain.has(d.id) ? typeColors[d.type] : '#1a2332')
+      .nodeOpacity(d => chain.has(d.id) ? 0.95 : 0.15)
+      .linkColor(l => {
+        const sid = nid(l.source), tid = nid(l.target);
+        return (chain.has(sid) && chain.has(tid)) ? linkTypeColors[l.type] : '#0d1520';
+      })
+      .linkOpacity(l => {
+        const sid = nid(l.source), tid = nid(l.target);
+        return (chain.has(sid) && chain.has(tid)) ? 0.7 : 0.03;
+      });
+  }
+
+  function clearTraceHighlight() {
+    activeChain = null;
+    if (searchQuery) { applySearchHighlight(); return; }
+    Graph
+      .nodeColor(d => typeColors[d.type])
+      .nodeOpacity(0.92)
+      .linkColor(d => linkTypeColors[d.type])
+      .linkOpacity(0.3);
+  }
+
+  // ---------- Node click → detail + trace ----------
+
+  Graph.onNodeClick(node => {
+    showDetail(node);
+    activeChain = traceFullChain(node.id);
+    applyChainHighlight(activeChain);
+  });
+
+  Graph.onBackgroundClick(() => {
+    clearTraceHighlight();
+    document.getElementById('detailPanel').classList.remove('open');
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      clearTraceHighlight();
+      document.getElementById('detailPanel').classList.remove('open');
+    }
+  });
+
+  // ---------- Detail Panel ----------
+
+  const metaKeyLabels = {
+    date: '日期', atomType: '主要类型', abbrev: '缩写', month: '月份',
+    gId: '编号', atomCount: 'Atoms 数量', sId: '编号', confidence: '置信度',
+    pId: '编号', keyLineCount: 'Key Lines', template: '产出模板'
+  };
+
+  function showDetail(d) {
+    const panel = document.getElementById('detailPanel');
+    const badge = document.getElementById('detailBadge');
+    badge.textContent = typeLabels[d.type];
+    badge.style.background = typeColors[d.type] + '20';
+    badge.style.color = typeColors[d.type];
+    document.getElementById('detailTitle').textContent = d.name;
+    document.getElementById('detailPath').textContent = d.path;
+
+    const meta = document.getElementById('detailMeta');
+    let metaHTML = `<div class="meta-row"><span class="meta-label">类型</span><span class="meta-value">${typeLabels[d.type]}</span></div>`;
+    if (d.meta) {
+      for (const [k, v] of Object.entries(d.meta)) {
+        if (v === null || v === undefined) continue;
+        const label = metaKeyLabels[k] || k;
+        metaHTML += `<div class="meta-row"><span class="meta-label">${label}</span><span class="meta-value">${v}</span></div>`;
+      }
+    }
+    meta.innerHTML = metaHTML;
+
+    const incoming = links.filter(l => nid(l.target) === d.id);
+    const outgoing = links.filter(l => nid(l.source) === d.id);
+
+    const inList = document.getElementById('detailIncoming');
+    inList.innerHTML = incoming.length ? incoming.map(l => {
+      const src = nodes.find(n => n.id === nid(l.source));
+      if (!src) return '';
+      return `<li data-node-id="${src.id}"><span class="ref-dot" style="background:${typeColors[src.type]}"></span><span class="ref-name">${src.name}</span><span class="ref-arrow">\u2190</span></li>`;
+    }).join('') : '<li style="color:var(--text-muted);background:none">\u65E0</li>';
+
+    const outList = document.getElementById('detailOutgoing');
+    outList.innerHTML = outgoing.length ? outgoing.map(l => {
+      const tgt = nodes.find(n => n.id === nid(l.target));
+      if (!tgt) return '';
+      return `<li data-node-id="${tgt.id}"><span class="ref-dot" style="background:${typeColors[tgt.type]}"></span><span class="ref-name">${tgt.name}</span><span class="ref-arrow">\u2192</span></li>`;
+    }).join('') : '<li style="color:var(--text-muted);background:none">\u65E0</li>';
+
+    panel.querySelectorAll('.ref-list li[data-node-id]').forEach(li => {
+      li.addEventListener('click', () => navigateToNode(li.dataset.nodeId));
+    });
+
+    panel.classList.add('open');
+  }
+
+  function navigateToNode(nodeId) {
+    const target = nodes.find(n => n.id === nodeId);
+    if (!target || target.x === undefined) return;
+    const dist = 150;
+    Graph.cameraPosition(
+      { x: target.x + dist, y: target.y + dist * 0.5, z: target.z + dist },
+      target, 1000
+    );
+    setTimeout(() => {
+      showDetail(target);
+      activeChain = traceFullChain(target.id);
+      applyChainHighlight(activeChain);
+    }, 1100);
+  }
+
+  document.getElementById('closeDetail').addEventListener('click', () => {
+    document.getElementById('detailPanel').classList.remove('open');
+  });
+
+  // ---------- Filter Chips ----------
+
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      chip.classList.toggle('active');
+      activeTypes.clear();
+      document.querySelectorAll('.chip.active').forEach(c => activeTypes.add(c.dataset.type));
+      Graph
+        .nodeVisibility(d => activeTypes.has(d.type))
+        .linkVisibility(l => {
+          const st = (typeof l.source === 'object') ? l.source.type : '';
+          const tt = (typeof l.target === 'object') ? l.target.type : '';
+          return activeTypes.has(st) && activeTypes.has(tt);
+        });
+    });
+  });
+
+  // ---------- Zoom Controls ----------
+
+  let initialDistance = 600;
+  setTimeout(() => {
+    const pos = Graph.cameraPosition();
+    initialDistance = Math.sqrt(pos.x ** 2 + pos.y ** 2 + pos.z ** 2) || 600;
+  }, 800);
+
+  document.getElementById('zoomIn').addEventListener('click', () => {
+    const pos = Graph.cameraPosition();
+    Graph.cameraPosition({ x: pos.x * 0.7, y: pos.y * 0.7, z: pos.z * 0.7 }, null, 300);
+  });
+  document.getElementById('zoomOut').addEventListener('click', () => {
+    const pos = Graph.cameraPosition();
+    Graph.cameraPosition({ x: pos.x * 1.4, y: pos.y * 1.4, z: pos.z * 1.4 }, null, 300);
+  });
+  document.getElementById('zoomReset').addEventListener('click', () => {
+    Graph.cameraPosition({ x: 0, y: 0, z: initialDistance }, { x: 0, y: 0, z: 0 }, 500);
+  });
+
+  // ---------- Toggle Labels ----------
+
+  document.getElementById('toggleLabels').addEventListener('click', () => {
+    showLabels = !showLabels;
+    document.getElementById('toggleLabels').classList.toggle('active-toggle', !showLabels);
+    Graph.nodeThreeObject(node => showLabels ? makeLabelSprite(node) : undefined);
+  });
+
+  // ---------- Toggle Force ----------
+
+  const forceBtn = document.getElementById('toggleForce');
+  forceBtn.addEventListener('click', () => {
+    forceRunning = !forceRunning;
+    if (forceRunning) {
+      Graph.cooldownTicks(Infinity).d3ReheatSimulation();
+      forceBtn.classList.remove('active-toggle');
+    } else {
+      Graph.cooldownTicks(0);
+      forceBtn.classList.add('active-toggle');
+    }
+  });
+
+  // ---------- Search ----------
+
+  function applySearchHighlight() {
+    if (!searchQuery) return;
+    const matched = new Set();
+    nodes.forEach(n => {
+      if (n.name.toLowerCase().includes(searchQuery) || n.path.toLowerCase().includes(searchQuery))
+        matched.add(n.id);
+    });
+    Graph
+      .nodeColor(d => matched.has(d.id) ? typeColors[d.type] : '#1a2332')
+      .nodeOpacity(d => matched.has(d.id) ? 0.95 : 0.12)
+      .linkColor(l => {
+        const sid = nid(l.source), tid = nid(l.target);
+        return (matched.has(sid) || matched.has(tid)) ? linkTypeColors[l.type] : '#0d1520';
+      })
+      .linkOpacity(l => {
+        const sid = nid(l.source), tid = nid(l.target);
+        return (matched.has(sid) || matched.has(tid)) ? 0.6 : 0.02;
+      });
+  }
+
+  document.getElementById('searchInput').addEventListener('input', e => {
+    searchQuery = e.target.value.toLowerCase().trim();
+    if (!searchQuery) {
+      if (activeChain) applyChainHighlight(activeChain);
+      else clearTraceHighlight();
+      return;
+    }
+    activeChain = null;
+    applySearchHighlight();
+  });
+
+  // ---------- Resize ----------
+
+  window.addEventListener('resize', () => {
+    Graph.width(container.clientWidth).height(container.clientHeight);
+  });
+}
 </script>
 </body>
 </html>

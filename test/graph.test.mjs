@@ -128,7 +128,7 @@ describe("extractGraph", () => {
     assert.equal(groups[0].meta.atomCount, 2);
 
     const classifyLinks = graph.links.filter((l) => l.type === "classify");
-    assert.equal(classifyLinks.length, 2);
+    assert.equal(classifyLinks.length, 1, "dedup: same source file → same group = 1 link");
   });
 
   it("discovers synthesis nodes and group->synthesis links", () => {
