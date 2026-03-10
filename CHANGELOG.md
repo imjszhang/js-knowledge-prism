@@ -16,10 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **CLI 命令 `prism setup-output-cron`**：一键配置产出定时任务（默认 120 分钟间隔）
 - **配置 schema 扩展**：`cron.outputInterval` 配置项，控制自动产出的执行间隔
 - **Registry 扩展**：`bases[].outputBindings` 数组，存储产出绑定元数据（perspectiveDir、template、enabled、lastOutputAt）
+- **Structure 自动刷新**：`output_all` 执行前自动检测 synthesis/groups 变化，按 perspective 去重刷新 SCQA、Key Lines 和 expand KL，实现 synthesis → structure → output 全链路自动化
+  - 绑定新增 `refreshStructure` 开关（默认 true），可按绑定关闭自动刷新
+  - 绑定新增 `lastStructureRefreshAt` 时间戳，用于 synthesis/groups 变化检测
 
 ### Changed
 
 - `knowledge_prism_register` 新注册条目自动包含空 `outputBindings` 数组，兼容旧 registry 数据
+- `knowledge_prism_output_all` 升级为两阶段执行：Phase 1 structure 刷新 + Phase 2 output 生成
 - `prism-processor` 技能文档（SKILL.md）更新至 v1.1.0，新增产出绑定管理和定时产出流程章节
 
 ## [1.1.0] - 2026-03-10

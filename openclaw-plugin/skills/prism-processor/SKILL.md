@@ -132,12 +132,13 @@ openclaw prism setup-output-cron
 | 用户意图 | 工具调用 |
 |----------|---------|
 | 绑定视角+模板的自动产出 | `knowledge_prism_bind_output(perspectiveDir, template)` |
+| 绑定但不自动刷新 structure | `knowledge_prism_bind_output(perspectiveDir, template, refreshStructure=false)` |
 | 暂停某个绑定 | `knowledge_prism_bind_output(perspectiveDir, template, enabled=false)` |
 | 恢复某个绑定 | `knowledge_prism_bind_output(perspectiveDir, template, enabled=true)` |
 | 查看所有绑定 | `knowledge_prism_list_output_bindings` |
 | 查看某个库的绑定 | `knowledge_prism_list_output_bindings(baseDir)` |
 
-绑定信息存储在 `registry.json` 的 `bases[].outputBindings` 数组中。
+绑定信息存储在 `registry.json` 的 `bases[].outputBindings` 数组中。每个绑定包含 `refreshStructure` 开关（默认 true）控制是否在生成 output 前自动刷新 structure。
 
 ---
 
@@ -147,22 +148,35 @@ openclaw prism setup-output-cron
 
 **仅需一步**：调用 `knowledge_prism_output_all`。
 
-该工具内部完成全部产出逻辑：
+该工具内部分两阶段完成全部产出逻辑：
 
-1. **读取注册表**：加载 `registry.json`，筛选 `enabled=true` 的知识库。
-2. **逐库逐绑定处理**：对每个启用的绑定串行执行：
-   - 检查 `pyramid/structure/<perspectiveDir>/` 目录下文件的最新修改时间。
-   - 若修改时间 ≤ `lastOutputAt` → 标记"跳过"（structure 无变化）。
-   - 若有变化或从未生成过 → 调用 `runOutput(mode="generate")` 生成 output。
-3. **单绑定失败不中断**：try/catch 包裹，继续处理下一个绑定。
-4. **回写注册表**：更新每个绑定的 `lastOutputAt` 和 `lastOutputSummary`。
-5. **返回汇总摘要**：报告每个绑定的处理结果。
+### Phase 1: Structure 自动刷新
 
-### 变化检测
+对每个知识库，收集所有启用绑定涉及的 unique perspectives（按 perspectiveDir 去重，同一视角只刷新一次）：
 
-通过递归扫描 `pyramid/structure/<perspectiveDir>/` 下所有文件的修改时间（mtime），取最大值与 `lastOutputAt` 比较。任意文件的 mtime 晚于上次产出时间即视为有变化。
+1. 检查 `refreshStructure` 开关：若为 false → 跳过该视角的刷新。
+2. **变化检测**：比较 `pyramid/analysis/synthesis.md` 和 `pyramid/analysis/groups/` 下所有文件的最新 mtime 与 `lastStructureRefreshAt`。
+3. 若无变化 → 跳过。
+4. 若有变化 → 依次执行：
+   - `runFillPerspective(stage="scqa")` — 从 synthesis 重新生成 SCQA
+   - `runFillPerspective(stage="keyline")` — 从 synthesis/groups 重新生成 Key Line 表格
+   - `runExpandKl` — 逐条展开 Key Line 为完整 KL 文件
+5. 更新该视角所有绑定的 `lastStructureRefreshAt`。
+6. 单步失败不中断：SCQA、Key Lines、各 KL 展开独立 try/catch。
+
+### Phase 2: Output 生成
+
+对每个启用的绑定串行执行：
+
+1. **变化检测**：递归扫描 `pyramid/structure/<perspectiveDir>/` 下所有文件的最新 mtime，与 `lastOutputAt` 比较。
+2. 若 structure 无变化 → 跳过。
+3. 若有变化或从未生成过 → 调用 `runOutput(mode="generate")` 生成 output。
+4. **单绑定失败不中断**：try/catch 包裹，继续处理下一个绑定。
+5. **回写注册表**：更新 `lastOutputAt` 和 `lastOutputSummary`。
+6. **返回汇总摘要**：报告 structure 刷新和 output 生成的结果。
 
 ### 安全保护
 
 - `force` 默认 false：已存在的非骨架 output 文件不会被覆盖。
-- 新的 output 文件正常写入，已有文件被跳过。
+- `refreshStructure` 默认 true，设为 false 可跳过自动刷新（适用于手动维护 structure 的场景）。
+- synthesis.md 不存在时跳过 structure 刷新，仍尝试 output 生成（structure 可能有旧内容）。

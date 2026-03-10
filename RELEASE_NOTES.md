@@ -1,12 +1,13 @@
 # Release Notes — v1.3.0
 
-Structure → Output 自动产出 Cron Job：知识棱镜现在可以自动检测 structure 变化并定时生成产出内容。
+全链路自动化：journal → synthesis → structure → output，一次绑定，定时全通。
 
 ## Highlights
 
-- **自动产出定时任务**：新增独立 cron job `prism-auto-output`，定期扫描所有已注册知识库的 structure 目录，检测到文件变化后自动调用 LLM 生成 output，形成完整的 journal → synthesis → output 全链路自动化
+- **全链路自动化**：`output_all` 升级为两阶段执行 — 先检测 synthesis/groups 变化自动刷新 structure（SCQA + Key Lines + expand KL），再检测 structure 变化生成 output，实现从原始笔记到成品文章的完全自动化
+- **Structure 自动刷新**：绑定新增 `refreshStructure` 开关（默认 true），synthesis 有变化时自动按 perspective 去重执行 `fill_perspective` + `expand_kl`，无需手动干预
 - **产出绑定（Output Bindings）**：通过 `knowledge_prism_bind_output` 灵活配置哪些视角+模板组合参与自动产出，支持多对多绑定和独立启停
-- **mtime 变化检测**：自动对比 `pyramid/structure/<perspective>/` 下文件的最新修改时间与上次产出时间，仅在有变化时触发生成，避免无效 LLM 调用
+- **mtime 变化检测**：双层变化检测 — synthesis/groups mtime 驱动 structure 刷新，structure mtime 驱动 output 生成，避免无效 LLM 调用
 - **CLI `setup-output-cron`**：一键配置产出定时任务，默认每 120 分钟执行，与处理 cron 独立互不干扰
 
 ## Breaking Changes

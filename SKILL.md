@@ -1,7 +1,7 @@
 ---
 name: js-knowledge-prism
 description: Pyramid-principle knowledge distillation — extract atoms, form groups, synthesize insights from journal notes.
-version: 1.0.0
+version: 1.3.0
 metadata:
   openclaw:
     emoji: "\U0001F48E"
@@ -57,6 +57,9 @@ The OpenClaw plugin connects to an OpenAI-compatible LLM API to drive extraction
 | `knowledge_prism_unregister` | Remove a knowledge base from automatic processing |
 | `knowledge_prism_list_registered` | List all registered knowledge bases with status |
 | `knowledge_prism_process_all` | Batch process all registered and enabled knowledge bases |
+| `knowledge_prism_bind_output` | Bind perspective+template for auto output generation (with `refreshStructure` toggle) |
+| `knowledge_prism_list_output_bindings` | List all output bindings and their status |
+| `knowledge_prism_output_all` | Batch generate all bound outputs (auto structure refresh + change detection) |
 | `knowledge_prism_discover_skills` | Query the extension skill registry |
 | `knowledge_prism_install_skill` | Download and install an extension skill |
 
@@ -73,6 +76,7 @@ openclaw prism register <dir>          Register knowledge base for auto-processi
 openclaw prism unregister <dir>        Remove from auto-processing list
 openclaw prism registered [--status]   List registered knowledge bases
 openclaw prism setup-cron [--every N]  Configure cron job for automatic processing
+openclaw prism setup-output-cron [--every N]  Configure cron job for auto output generation
 openclaw prism sync [--force]          Sync knowledge base to memory system
 ```
 
@@ -98,7 +102,7 @@ js-knowledge-prism/
 ├── openclaw-plugin/
 │   ├── openclaw.plugin.json           ← Plugin manifest (config schema, UI hints)
 │   ├── package.json                   ← ESM module descriptor
-│   ├── index.mjs                      ← Plugin logic — 15 AI tools + CLI + HTTP routes
+│   ├── index.mjs                      ← Plugin logic — 18 AI tools + CLI + HTTP routes
 │   └── skills/
 │       └── prism-processor/
 │           └── SKILL.md               ← Cron auto-processing skill definition
@@ -195,6 +199,9 @@ Restart OpenClaw to load the plugin.
 | `process.temperature` | number | `0.3` | LLM temperature |
 | `process.maxTokens` | number | `8192` | Max tokens per request |
 | `process.timeoutMs` | number | `1800000` | Request timeout (ms) |
+| `cron.defaultInterval` | number | `60` | Auto-process interval (minutes) |
+| `cron.outputInterval` | number | `120` | Auto-output interval (minutes) |
+| `cron.timezone` | string | `Asia/Shanghai` | Cron timezone (IANA) |
 
 ## Verify
 

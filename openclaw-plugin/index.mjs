@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createHttpCaller, runPipeline } from "../lib/process.mjs";
 import { getStatus } from "../lib/status.mjs";
 import { listTemplates, loadTemplate, runOutput } from "../lib/output.mjs";
-import { makePaths, listPerspectiveDirs } from "../lib/utils.mjs";
+import { makePaths, listPerspectiveDirs, parseKeyLineTable } from "../lib/utils.mjs";
 import { extractGraph, analyzeGraph, generateGraphHtml, filterByPerspective } from "../lib/graph.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -1547,8 +1547,9 @@ export default function register(api) {
       name: "knowledge_prism_bind_output",
       label: "Knowledge Prism: Bind Output",
       description:
-        "为已注册知识库绑定一对 视角+模板 的自动产出配置。绑定后 cron 定时任务会自动检测 structure 变化并生成 output。" +
-        "传入 enabled=false 可暂停自动产出而不移除绑定。重复绑定相同 perspectiveDir+template 只更新 enabled 状态。",
+        "为已注册知识库绑定一对 视角+模板 的自动产出配置。绑定后 cron 定时任务会自动检测变化并生成 output。" +
+        "refreshStructure=true（默认）时，生成前会先自动刷新 structure（SCQA + Key Lines + expand KL）。" +
+        "传入 enabled=false 可暂停自动产出而不移除绑定。重复绑定相同 perspectiveDir+template 只更新 enabled/refreshStructure 状态。",
       parameters: {
         type: "object",
         properties: {
@@ -1567,6 +1568,10 @@ export default function register(api) {
           enabled: {
             type: "boolean",
             description: "是否启用自动产出。默认 true。传 false 可暂停。",
+          },
+          refreshStructure: {
+            type: "boolean",
+            description: "生成 output 前是否自动刷新 structure（SCQA + Key Lines + expand KL）。默认 true。",
           },
         },
         required: ["perspectiveDir", "template"],
@@ -1608,11 +1613,14 @@ export default function register(api) {
           (b) => b.perspectiveDir === params.perspectiveDir && b.template === params.template,
         );
 
+        const refreshStructure = params.refreshStructure ?? true;
+
         if (existing) {
           existing.enabled = enabled;
+          existing.refreshStructure = refreshStructure;
           saveRegistry(registry);
           return textResult(
-            `已更新绑定: ${params.perspectiveDir} + ${params.template} → enabled=${enabled}`,
+            `已更新绑定: ${params.perspectiveDir} + ${params.template} → enabled=${enabled}, refreshStructure=${refreshStructure}`,
           );
         }
 
@@ -1620,6 +1628,8 @@ export default function register(api) {
           perspectiveDir: params.perspectiveDir,
           template: params.template,
           enabled,
+          refreshStructure,
+          lastStructureRefreshAt: null,
           lastOutputAt: null,
           lastOutputSummary: null,
         });
@@ -1677,11 +1687,15 @@ export default function register(api) {
           } else {
             for (const b of bindings) {
               const flag = b.enabled ? "启用" : "禁用";
+              const refresh = (b.refreshStructure ?? true) ? "自动刷新" : "手动";
               const lastTs = b.lastOutputAt
                 ? b.lastOutputAt.replace("T", " ").slice(0, 16)
                 : "从未";
-              lines.push(`  - ${b.perspectiveDir} + ${b.template} [${flag}]`);
-              lines.push(`    上次产出: ${lastTs}`);
+              const lastRefresh = b.lastStructureRefreshAt
+                ? b.lastStructureRefreshAt.replace("T", " ").slice(0, 16)
+                : "从未";
+              lines.push(`  - ${b.perspectiveDir} + ${b.template} [${flag}] [structure: ${refresh}]`);
+              lines.push(`    上次 structure 刷新: ${lastRefresh} | 上次产出: ${lastTs}`);
               if (b.lastOutputSummary) lines.push(`    摘要: ${b.lastOutputSummary}`);
             }
           }
@@ -1718,8 +1732,9 @@ export default function register(api) {
       name: "knowledge_prism_output_all",
       label: "Knowledge Prism: Output All Bindings",
       description:
-        "批量生成所有已注册知识库中启用的产出绑定。检测 structure 目录是否有变化，" +
-        "对有变化的绑定调用 LLM 生成 output 内容。单个绑定失败不影响其他绑定。",
+        "批量生成所有已注册知识库中启用的产出绑定。分两阶段执行：" +
+        "Phase 1 检测 synthesis/groups 变化并自动刷新 structure（SCQA + Key Lines + expand KL）；" +
+        "Phase 2 检测 structure 变化并调 LLM 生成 output 内容。单个绑定失败不影响其他绑定。",
       parameters: {
         type: "object",
         properties: {
@@ -1747,6 +1762,10 @@ export default function register(api) {
         const force = params.force ?? false;
         const results = [];
 
+        const { runFillPerspective } = await import("../lib/fill-perspective.mjs");
+        const { runExpandKl } = await import("../lib/expand-kl.mjs");
+        const callAgent = buildCallAgent();
+
         for (const base of enabledBases) {
           const bindings = (base.outputBindings || []).filter((b) => b.enabled);
           if (bindings.length === 0) continue;
@@ -1763,6 +1782,133 @@ export default function register(api) {
 
           const paths = makePaths(base.baseDir);
 
+          // ----------------------------------------------------------
+          // Phase 1: Structure 刷新（按 perspective 去重）
+          // ----------------------------------------------------------
+          const refreshedPerspectives = new Set();
+
+          for (const binding of bindings) {
+            if (!(binding.refreshStructure ?? true)) continue;
+            if (refreshedPerspectives.has(binding.perspectiveDir)) continue;
+
+            const perspPath = join(paths.structureDir, binding.perspectiveDir);
+            if (!existsSync(perspPath)) continue;
+
+            if (!existsSync(paths.synthesisPath)) {
+              results.push({
+                name: base.name,
+                binding: `${binding.perspectiveDir} [structure 刷新]`,
+                status: "skipped",
+                message: "synthesis.md 不存在，跳过 structure 刷新",
+              });
+              refreshedPerspectives.add(binding.perspectiveDir);
+              continue;
+            }
+
+            const synthMtime = statSync(paths.synthesisPath).mtimeMs;
+            const groupsMtime = getLatestMtime(paths.groupsDir);
+            const analysisMtime = Math.max(synthMtime, groupsMtime);
+            const lastRefreshMs = binding.lastStructureRefreshAt
+              ? new Date(binding.lastStructureRefreshAt).getTime()
+              : 0;
+
+            if (analysisMtime <= lastRefreshMs) {
+              results.push({
+                name: base.name,
+                binding: `${binding.perspectiveDir} [structure 刷新]`,
+                status: "skipped",
+                message: "synthesis/groups 无变化",
+              });
+              refreshedPerspectives.add(binding.perspectiveDir);
+              continue;
+            }
+
+            if (dryRun) {
+              results.push({
+                name: base.name,
+                binding: `${binding.perspectiveDir} [structure 刷新]`,
+                status: "dry-run",
+                message: "检测到 synthesis/groups 变化，待刷新",
+              });
+              refreshedPerspectives.add(binding.perspectiveDir);
+              continue;
+            }
+
+            const refreshEntry = {
+              name: base.name,
+              binding: `${binding.perspectiveDir} [structure 刷新]`,
+            };
+
+            try {
+              const scqaResult = await runFillPerspective({
+                baseDir: base.baseDir,
+                perspectiveDir: binding.perspectiveDir,
+                stage: "scqa",
+                autoWrite: true,
+                callAgent,
+              });
+
+              const klResult = await runFillPerspective({
+                baseDir: base.baseDir,
+                perspectiveDir: binding.perspectiveDir,
+                stage: "keyline",
+                autoWrite: true,
+                callAgent,
+              });
+
+              let expandCount = 0;
+              let expandErrors = 0;
+              const treePath = join(perspPath, "tree", "README.md");
+              if (existsSync(treePath)) {
+                const treeContent = readFileSync(treePath, "utf-8");
+                const keyLines = parseKeyLineTable(treeContent);
+                for (const kl of keyLines) {
+                  try {
+                    await runExpandKl({
+                      baseDir: base.baseDir,
+                      perspectiveDir: binding.perspectiveDir,
+                      klId: kl.klId,
+                      autoWrite: true,
+                      callAgent,
+                    });
+                    expandCount++;
+                  } catch (err) {
+                    expandErrors++;
+                    api.logger.warn(`[${base.name}] expand ${kl.klId} 失败: ${err.message}`);
+                  }
+                }
+              }
+
+              const nowIso = new Date().toISOString();
+              for (const b of bindings) {
+                if (b.perspectiveDir === binding.perspectiveDir) {
+                  b.lastStructureRefreshAt = nowIso;
+                }
+              }
+
+              const parts = [];
+              if (scqaResult.success) parts.push("SCQA ✓");
+              else parts.push(`SCQA ✗ ${scqaResult.message?.slice(0, 60)}`);
+              if (klResult.success) parts.push("Key Lines ✓");
+              else parts.push(`Key Lines ✗ ${klResult.message?.slice(0, 60)}`);
+              if (expandCount > 0 || expandErrors > 0) {
+                parts.push(`expand KL: ${expandCount} 成功` + (expandErrors ? `, ${expandErrors} 失败` : ""));
+              }
+
+              refreshEntry.status = "refreshed";
+              refreshEntry.message = parts.join(", ");
+            } catch (err) {
+              refreshEntry.status = "error";
+              refreshEntry.message = `structure 刷新失败: ${err.message?.slice(0, 150)}`;
+            }
+
+            results.push(refreshEntry);
+            refreshedPerspectives.add(binding.perspectiveDir);
+          }
+
+          // ----------------------------------------------------------
+          // Phase 2: Output 生成
+          // ----------------------------------------------------------
           for (const binding of bindings) {
             const entry = {
               name: base.name,
@@ -1813,7 +1959,7 @@ export default function register(api) {
                 autoWrite: true,
                 dryRun: false,
                 force,
-                callAgent: buildCallAgent(),
+                callAgent,
                 log: (msg) => api.logger.info(`[${base.name}] ${msg}`),
                 warn: (msg) => api.logger.warn(`[${base.name}] ${msg}`),
               });
@@ -1854,10 +2000,11 @@ export default function register(api) {
           return textResult("所有已注册知识库均无启用的产出绑定。使用 knowledge_prism_bind_output 添加绑定。");
         }
 
-        const lines = [`自动产出完毕（${results.length} 个绑定）`, ""];
+        const lines = [`自动产出完毕（${results.length} 项）`, ""];
         for (const r of results) {
           const icon =
             r.status === "generated" ? "✓" :
+            r.status === "refreshed" ? "↻" :
             r.status === "skipped" ? "—" :
             r.status === "dry-run" ? "👁" :
             "✗";
