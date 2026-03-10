@@ -615,7 +615,18 @@ export default function register(api) {
               return;
             }
 
-            const cronExpr = `*/${minutes} * * * *`;
+            // cron 分钟字段最大 59，超过 60 需用小时级表达式，如 120 分钟 → 0 */2 * * *
+            let cronExpr;
+            if (minutes <= 60) {
+              cronExpr = `*/${minutes} * * * *`;
+            } else if (minutes % 60 === 0) {
+              const hours = minutes / 60;
+              cronExpr = `0 */${hours} * * *`;
+            } else {
+              const hours = Math.max(1, Math.floor(minutes / 60));
+              cronExpr = `0 */${hours} * * *`;
+            }
+
             const result = runOcCron([
               "add",
               "--name", JOB_NAME,
