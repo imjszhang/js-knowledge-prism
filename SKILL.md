@@ -47,13 +47,18 @@ The OpenClaw plugin connects to an OpenAI-compatible LLM API to drive extraction
 |------|-------------|
 | `knowledge_prism_process` | Run incremental pipeline (atoms → groups → synthesis) |
 | `knowledge_prism_status` | Query knowledge base status and statistics |
+| `knowledge_prism_graph` | Generate knowledge graph visualization HTML with statistics |
 | `knowledge_prism_new_perspective` | Create a new perspective skeleton from template |
 | `knowledge_prism_fill_perspective` | Generate SCQA or Key Line content for a perspective |
 | `knowledge_prism_expand_kl` | Expand a Key Line into a full supporting argument document |
+| `knowledge_prism_output` | Generate reader-facing output from a perspective |
+| `knowledge_prism_list_templates` | List available output templates |
 | `knowledge_prism_register` | Register a knowledge base for automatic cron processing |
 | `knowledge_prism_unregister` | Remove a knowledge base from automatic processing |
 | `knowledge_prism_list_registered` | List all registered knowledge bases with status |
 | `knowledge_prism_process_all` | Batch process all registered and enabled knowledge bases |
+| `knowledge_prism_discover_skills` | Query the extension skill registry |
+| `knowledge_prism_install_skill` | Download and install an extension skill |
 
 ## CLI Commands
 
@@ -61,12 +66,27 @@ The OpenClaw plugin connects to an OpenAI-compatible LLM API to drive extraction
 openclaw prism init <dir>              Initialize knowledge prism skeleton
 openclaw prism process [--dry-run]     Run incremental processing
 openclaw prism status [--json]         View processing status
+openclaw prism graph [--base-dir]      Generate knowledge graph HTML
 openclaw prism new-perspective <slug>  Create new perspective from template
+openclaw prism output [--perspective]  Generate reader-facing output
 openclaw prism register <dir>          Register knowledge base for auto-processing
 openclaw prism unregister <dir>        Remove from auto-processing list
 openclaw prism registered [--status]   List registered knowledge bases
 openclaw prism setup-cron [--every N]  Configure cron job for automatic processing
+openclaw prism sync [--force]          Sync knowledge base to memory system
 ```
+
+## Web UI
+
+The plugin registers HTTP routes on the OpenClaw gateway:
+
+| Route | Description |
+|-------|-------------|
+| `/plugins/js-knowledge/prism/` | Hub page — lists all registered knowledge bases with graph status |
+| `/plugins/js-knowledge/prism/api/bases.json` | JSON API — registry data with graph existence flags |
+| `/plugins/js-knowledge/prism/graph/{index}` | Serves the generated `graph.html` for a registered base |
+
+Access the hub at `http://<openclaw-host>/plugins/js-knowledge/prism/` after the plugin is loaded.
 
 ## Skill Bundle Structure
 
@@ -78,7 +98,7 @@ js-knowledge-prism/
 ├── openclaw-plugin/
 │   ├── openclaw.plugin.json           ← Plugin manifest (config schema, UI hints)
 │   ├── package.json                   ← ESM module descriptor
-│   ├── index.mjs                      ← Plugin logic — 9 AI tools + CLI
+│   ├── index.mjs                      ← Plugin logic — 15 AI tools + CLI + HTTP routes
 │   └── skills/
 │       └── prism-processor/
 │           └── SKILL.md               ← Cron auto-processing skill definition
@@ -86,12 +106,16 @@ js-knowledge-prism/
 │   ├── config.mjs                     ← Configuration loading
 │   ├── process.mjs                    ← Core pipeline (atoms → groups → synthesis)
 │   ├── status.mjs                     ← Status collection
+│   ├── graph.mjs                      ← Knowledge graph extraction and HTML generation
 │   ├── init.mjs                       ← Project initialization
 │   ├── new-perspective.mjs            ← Perspective creation
 │   ├── fill-perspective.mjs           ← SCQA/Key Line generation
 │   ├── expand-kl.mjs                  ← Key Line expansion
+│   ├── output.mjs                     ← Reader-facing output generation
 │   └── utils.mjs                      ← Shared utilities
-└── templates/                         ← Init templates for skeleton creation
+└── templates/
+    ├── graph.html                     ← 3D knowledge graph template
+    └── graph-hub.html                 ← Web UI hub page for multi-base graph overview
 ```
 
 > `openclaw-plugin/index.mjs` imports from `../lib/` via relative paths, so the directory layout must be preserved.

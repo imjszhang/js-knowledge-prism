@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, createReadStream } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { execSync, execFileSync } from "node:child_process";
@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createHttpCaller, runPipeline } from "../lib/process.mjs";
 import { getStatus } from "../lib/status.mjs";
 import { listTemplates, loadTemplate, runOutput } from "../lib/output.mjs";
+import { extractGraph, analyzeGraph, generateGraphHtml, filterByPerspective } from "../lib/graph.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..");
@@ -583,6 +584,53 @@ export default function register(api) {
             console.error("  ✗ 同步失败，请检查注册表和知识库路径\n");
           }
         });
+
+      // --- prism graph ---
+      prism
+        .command("graph")
+        .description("生成知识图谱可视化 HTML 文件")
+        .option("--base-dir <dir>", "知识库根目录（覆盖插件配置）")
+        .option("--output <path>", "输出文件路径（默认 <baseDir>/graph.html）")
+        .option("--json", "额外输出原始 JSON 数据文件")
+        .option("--perspective <id>", "只显示特定视角相关的子图")
+        .action(async (opts) => {
+          const baseDir = opts.baseDir || resolveBaseDir();
+          const kbName = readBaseName(baseDir) || "Knowledge Prism";
+
+          console.log(`\n  知识图谱生成`);
+          console.log(`  根目录: ${baseDir}\n`);
+
+          let graph = extractGraph(baseDir);
+
+          if (opts.perspective) {
+            graph = filterByPerspective(graph, opts.perspective);
+            console.log(`  已过滤至视角: ${opts.perspective}`);
+          }
+
+          const stats = analyzeGraph(graph);
+
+          console.log(`  节点: ${stats.totalNodes}, 链接: ${stats.totalLinks}`);
+          for (const [type, count] of Object.entries(stats.typeCounts)) {
+            if (count > 0) console.log(`    ${type}: ${count}`);
+          }
+          if (stats.orphanCount > 0) console.log(`  ⚠ 发现 ${stats.orphanCount} 个孤立节点`);
+          if (stats.brokenLinks.length > 0) console.log(`  ⚠ 发现 ${stats.brokenLinks.length} 条断链`);
+
+          const outputPath = opts.output || join(baseDir, "graph.html");
+          generateGraphHtml(graph, stats, {
+            outputPath,
+            knowledgeBaseName: kbName,
+            log: (msg) => console.log(`  ${msg}`),
+          });
+
+          if (opts.json) {
+            const jsonPath = outputPath.replace(/\.html$/, ".json");
+            writeFileSync(jsonPath, JSON.stringify({ ...graph, stats }, null, 2), "utf-8");
+            console.log(`  ✓ 已生成 JSON 数据: ${jsonPath}`);
+          }
+
+          console.log();
+        });
     },
     { commands: ["prism"] },
   );
@@ -1024,6 +1072,78 @@ export default function register(api) {
 
         runPrismMemorySync({ logger: api.logger }).catch(() => {});
         return textResult(lines.join("\n"));
+      },
+    },
+    { optional: true },
+  );
+
+  // ---------------------------------------------------------------------------
+  // AI Tool: knowledge_prism_graph
+  // ---------------------------------------------------------------------------
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_graph",
+      label: "Knowledge Prism: Generate Graph",
+      description:
+        "生成知识库的知识图谱可视化 HTML 文件。图谱展示「日记 → 信息单元 → 分组 → 顶层观点 → 视角 → 产出」的完整引用链。" +
+        "返回生成路径和统计摘要（节点数、边数、覆盖率、孤立节点、断链）。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录路径。省略则使用插件配置的默认值。",
+          },
+          perspective: {
+            type: "string",
+            description: "只显示特定视角相关的子图（如 P01）。省略则生成完整图谱。",
+          },
+          outputJson: {
+            type: "boolean",
+            description: "是否额外输出 JSON 数据文件。默认 false。",
+          },
+        },
+      },
+      async execute(_toolCallId, params) {
+        const baseDir = params.baseDir || resolveBaseDir();
+        const kbName = readBaseName(baseDir) || "Knowledge Prism";
+
+        let graph = extractGraph(baseDir);
+
+        if (params.perspective) {
+          graph = filterByPerspective(graph, params.perspective);
+        }
+
+        const stats = analyzeGraph(graph);
+        const outputPath = join(baseDir, "graph.html");
+
+        generateGraphHtml(graph, stats, {
+          outputPath,
+          knowledgeBaseName: kbName,
+          log: () => {},
+        });
+
+        if (params.outputJson) {
+          const jsonPath = outputPath.replace(/\.html$/, ".json");
+          writeFileSync(jsonPath, JSON.stringify({ ...graph, stats }, null, 2), "utf-8");
+        }
+
+        const parts = [
+          `知识图谱已生成 (${baseDir})`,
+          `文件: ${outputPath}`,
+          "",
+          `节点: ${stats.totalNodes}, 链接: ${stats.totalLinks}, 覆盖率: ${stats.coverage}%`,
+        ];
+        for (const [type, count] of Object.entries(stats.typeCounts)) {
+          if (count > 0) parts.push(`  ${type}: ${count}`);
+        }
+        if (stats.orphanCount > 0) parts.push(`\n孤立节点: ${stats.orphanCount}`);
+        if (stats.brokenLinks.length > 0) parts.push(`断链: ${stats.brokenLinks.length}`);
+        if (params.perspective) parts.push(`\n已过滤至视角: ${params.perspective}`);
+        if (params.outputJson) parts.push(`JSON 数据: ${outputPath.replace(/\.html$/, ".json")}`);
+
+        return textResult(parts.join("\n"));
       },
     },
     { optional: true },
@@ -1570,4 +1690,106 @@ export default function register(api) {
     },
     { optional: true },
   );
+
+  // ---------------------------------------------------------------------------
+  // Gateway HTTP Routes: Graph Hub
+  // ---------------------------------------------------------------------------
+
+  const GRAPH_ROUTE_PREFIX = "/plugins/js-knowledge/prism";
+  const HUB_TEMPLATE_PATH = join(PROJECT_ROOT, "templates", "graph-hub.html");
+
+  function sendJson(res, statusCode, body) {
+    const payload = JSON.stringify(body);
+    res.writeHead(statusCode, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(payload);
+  }
+
+  function serveFile(res, filePath, contentType) {
+    const stream = createReadStream(filePath);
+    stream.on("error", () => {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not Found");
+    });
+    res.writeHead(200, { "Content-Type": contentType });
+    stream.pipe(res);
+  }
+
+  // Redirect /plugins/knowledge-prism -> /plugins/knowledge-prism/
+  api.registerHttpRoute({
+    path: `${GRAPH_ROUTE_PREFIX}`,
+    auth: "plugin",
+    async handler(_req, res) {
+      res.writeHead(301, { Location: `${GRAPH_ROUTE_PREFIX}/` });
+      res.end();
+    },
+  });
+
+  // Hub page: /plugins/knowledge-prism/
+  api.registerHttpRoute({
+    path: `${GRAPH_ROUTE_PREFIX}/`,
+    auth: "plugin",
+    async handler(_req, res) {
+      if (!existsSync(HUB_TEMPLATE_PATH)) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Hub template not found");
+        return;
+      }
+      serveFile(res, HUB_TEMPLATE_PATH, "text/html; charset=utf-8");
+    },
+  });
+
+  // API: /plugins/knowledge-prism/api/bases.json
+  api.registerHttpRoute({
+    path: `${GRAPH_ROUTE_PREFIX}/api/bases.json`,
+    auth: "plugin",
+    async handler(_req, res) {
+      const registry = loadRegistry();
+      const bases = registry.bases.map((b) => ({
+        name: b.name,
+        baseDir: b.baseDir,
+        enabled: b.enabled,
+        registeredAt: b.registeredAt,
+        lastProcessedAt: b.lastProcessedAt,
+        graphExists: existsSync(join(b.baseDir, "graph.html")),
+      }));
+      sendJson(res, 200, { bases });
+    },
+  });
+
+  // Serve graph HTML: /plugins/knowledge-prism/graph/{index}
+  api.registerHttpRoute({
+    path: `${GRAPH_ROUTE_PREFIX}/graph`,
+    auth: "plugin",
+    match: "prefix",
+    async handler(req, res) {
+      const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      const tail = parsed.pathname.slice(`${GRAPH_ROUTE_PREFIX}/graph/`.length);
+      const index = parseInt(tail, 10);
+
+      if (isNaN(index) || index < 0) {
+        sendJson(res, 400, { error: "Invalid index" });
+        return;
+      }
+
+      const registry = loadRegistry();
+      if (index >= registry.bases.length) {
+        sendJson(res, 404, { error: "Index out of range" });
+        return;
+      }
+
+      const base = registry.bases[index];
+      const graphPath = join(base.baseDir, "graph.html");
+      if (!existsSync(graphPath)) {
+        sendJson(res, 404, {
+          error: `graph.html not found for "${base.name}". Run: openclaw prism graph --base-dir "${base.baseDir}"`,
+        });
+        return;
+      }
+
+      serveFile(res, graphPath, "text/html; charset=utf-8");
+    },
+  });
 }

@@ -196,14 +196,40 @@ openclaw prism init <dir> [--name <name>]
 openclaw prism process [--dry-run] [--auto-write] [--stage <n>] [--base-dir <dir>]
 openclaw prism status [--json] [--base-dir <dir>]
 openclaw prism new-perspective <slug> [--name <name>]
+openclaw prism graph [--base-dir <dir>] [--output <path>] [--json] [--perspective <id>]
+openclaw prism register <dir>
+openclaw prism unregister <dir>
+openclaw prism registered [--status]
+openclaw prism setup-cron [--every <minutes>]
+openclaw prism sync [--force]
 ```
 
 ### 插件提供的 AI 工具
 
-插件注册了两个 AI 工具，OpenClaw Agent 在对话中可自动调用：
+插件注册了以下 AI 工具，OpenClaw Agent 在对话中可自动调用：
 
-- **`knowledge_prism_process`** — 执行增量处理（atoms → groups → synthesis），返回处理摘要
-- **`knowledge_prism_status`** — 查询知识库当前状态
+| 工具 | 说明 |
+|------|------|
+| `knowledge_prism_process` | 执行增量处理（atoms → groups → synthesis） |
+| `knowledge_prism_status` | 查询知识库当前状态 |
+| `knowledge_prism_graph` | 生成知识图谱可视化 HTML，返回统计摘要 |
+| `knowledge_prism_new_perspective` | 创建新视角骨架 |
+| `knowledge_prism_fill_perspective` | 生成 SCQA 或 Key Line 内容 |
+| `knowledge_prism_expand_kl` | 展开 Key Line 为完整论证文档 |
+| `knowledge_prism_output` | 从视角生成面向读者的产出 |
+| `knowledge_prism_register` | 注册知识库到自动处理列表 |
+| `knowledge_prism_list_registered` | 列出所有已注册知识库及状态 |
+| `knowledge_prism_process_all` | 批量处理所有已注册知识库 |
+
+### Web UI：知识图谱总览
+
+插件通过 OpenClaw HTTP 网关提供 Web 页面，可在浏览器中查看所有已注册知识库的知识图谱。
+
+访问路径：`http://<openclaw-host>/plugins/js-knowledge/prism/`
+
+- 列出所有已注册知识库，显示名称、路径、启用状态和图谱生成状态
+- 点击"查看图谱"直接在浏览器中打开对应知识库的 3D 交互图谱
+- 图谱需先通过 `openclaw prism graph` 或 AI 工具 `knowledge_prism_graph` 生成
 
 ## 编程 API
 
