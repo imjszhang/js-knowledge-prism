@@ -1,19 +1,20 @@
-# Release Notes — v1.5.0
+# Release Notes — v1.6.0
 
-策略化 Structure 刷新：`klStrategy` 替代 `refreshStructure`，支持日期驱动的 KL 自动追加。
+模块化产出引擎：Prompt 组件化、类型抽象、多粒度素材、质量审校、多阶段流水线和多源绑定。
 
 ## Highlights
 
-- **`klStrategy` 策略分派**：`bind_output` 的 `refreshStructure` 布尔开关升级为 `klStrategy` 枚举，精确控制不同视角类型的 structure 刷新方式
-- **`date-driven` 策略**：专为日记/日志型视角设计 — 自动检测 journal 新日期，匹配已处理的 groups，LLM 生成主题标题，追加 KL 行并 expand，不破坏现有 KL 结构
-- **`synthesis` 策略（默认）**：等价于原 `refreshStructure: true`，全量重生成 SCQA + Key Lines + expand
-- **`manual` 策略**：等价于原 `refreshStructure: false`，不自动刷新
-- **代码去重**：batch path 和 mtime fallback path 的 structure 刷新逻辑统一提取为 `refreshByStrategy` 公共函数
+- **Prompt 组件化**：新增 `components/` 目录，通过 `{{@include path}}` 语法在模板间复用 persona、style、constraints 等片段，消除重复
+- **产出类型抽象**：新增 `types/` 目录，定义 `diary`、`blog` 等类型契约（读者画像、拆分粒度、质量标准），模板通过 `type: xxx` 继承默认配置
+- **多粒度素材注入**：`split` 策略从仅 `per-kl` 扩展为 `per-kl` / `per-perspective` / `per-group`，灵活匹配不同产出需求
+- **LLM 质量审校**：模板可声明 `# Review Prompt` 区段，`--review` 标志触发生成后自动审校，报告保存到 `_reviews/`
+- **多阶段流水线**：模板可声明 `stages`（如 outline → draft → polish），中间产物存储在 `_staging/`，支持 `pauseAfter` 人工审查和 `--stage` 断点续跑
+- **多源绑定**：支持多视角交叉（`--perspective P01,P02`）和直接从 analysis 生成（`--source analysis --groups G01,G02`），打破 1:1 视角-产出耦合
+- **OpenClaw 插件同步更新**：CLI 新增 `--review`、`--stage`、`--source`、`--groups`、`--list-types` 选项；AI 工具新增 `knowledge_prism_list_types`，`knowledge_prism_output` 扩展 `perspectives`、`source`、`review`、`stage` 参数
 
 ## Breaking Changes
 
-- `bind_output` 参数 `refreshStructure` 已移除，替换为 `klStrategy`（`"synthesis"` / `"date-driven"` / `"manual"`）
-- 已有绑定中的 `refreshStructure` 字段不再被读取，需重新调用 `bind_output` 设置 `klStrategy`
+无。所有新功能均为 opt-in，现有调用方式完全兼容。
 
 ## Install
 
@@ -25,7 +26,22 @@ curl -fsSL https://raw.githubusercontent.com/user/js-knowledge-prism/main/instal
 
 - Hub 页面内嵌实时生成按钮（无需手动运行 CLI）
 - 图谱快照导出（PNG / SVG）
-- 节点聚类分析与自动分组
+- 更多内置类型和组件（tutorial、changelog 等）
+
+---
+
+<details>
+<summary>v1.5.0</summary>
+
+策略化 Structure 刷新：`klStrategy` 替代 `refreshStructure`，支持日期驱动的 KL 自动追加。
+
+- **`klStrategy` 策略分派**：`bind_output` 的 `refreshStructure` 布尔开关升级为 `klStrategy` 枚举，精确控制不同视角类型的 structure 刷新方式
+- **`date-driven` 策略**：专为日记/日志型视角设计 — 自动检测 journal 新日期，匹配已处理的 groups，LLM 生成主题标题，追加 KL 行并 expand，不破坏现有 KL 结构
+- **`synthesis` 策略（默认）**：等价于原 `refreshStructure: true`，全量重生成 SCQA + Key Lines + expand
+- **`manual` 策略**：等价于原 `refreshStructure: false`，不自动刷新
+- **代码去重**：batch path 和 mtime fallback path 的 structure 刷新逻辑统一提取为 `refreshByStrategy` 公共函数
+
+</details>
 
 ---
 

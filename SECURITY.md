@@ -59,6 +59,18 @@ The output cron uses local-only work files for crash recovery:
 
 These files are created under the OpenClaw workspace directory (`~/.openclaw/workspace/.openclaw/prism-processor/`). They do not contain API keys, journal content, or any user-identifiable information.
 
+## Output engine work files
+
+The output engine (v1.6.0+) may create additional local-only work directories inside the knowledge base `outputs/` folder:
+
+| File / Directory | Purpose | Contains secrets? |
+|------|---------|-------------------|
+| `_staging/<id>/` | Multi-stage pipeline intermediate outputs | No — markdown drafts from each pipeline stage |
+| `_reviews/` | LLM quality review reports | No — review scores and feedback text |
+| `_logs/` | Generation run logs (prompt lengths, timing) | No — metadata only, no full prompt or response content |
+
+These directories are local to the knowledge base and contain only generated markdown text and run metadata.
+
 ## Reporting vulnerabilities
 
 If you discover a security issue, please open a GitHub issue or contact the maintainer directly.
@@ -67,4 +79,6 @@ If you discover a security issue, please open a GitHub issue or contact the main
 
 | Version | Supported |
 |---------|-----------|
-| 1.x     | Yes       |
+| 1.6.x   | Yes       |
+| 1.5.x   | Yes       |
+| < 1.5   | No        |

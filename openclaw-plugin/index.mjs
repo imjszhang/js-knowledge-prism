@@ -6,7 +6,7 @@ import { execSync, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createHttpCaller, runPipeline } from "../lib/process.mjs";
 import { getStatus } from "../lib/status.mjs";
-import { listTemplates, loadTemplate, runOutput } from "../lib/output.mjs";
+import { listTemplates, listTypes, loadTemplate, loadType, runOutput } from "../lib/output.mjs";
 import { makePaths, listPerspectiveDirs, parseKeyLineTable } from "../lib/utils.mjs";
 import { extractGraph, analyzeGraph, generateGraphHtml, filterByPerspective } from "../lib/graph.mjs";
 
@@ -469,16 +469,21 @@ export default function register(api) {
       prism
         .command("output")
         .description("从视角生成面向读者的产出（日记、博客等）")
-        .option("--perspective <dir>", "视角目录名（如 P23-practice-diary）")
+        .option("--perspective <dir>", "视角目录名（逗号分隔多个，如 P01,P02）")
         .option("--template <name>", "输出模板名（如 practice-diary, blog）")
         .option("--output-dir <dir>", "输出目录（默认 outputs/<template>）")
         .option("--kl <ids>", "只处理指定 KL（逗号分隔）")
+        .option("--source <type>", "素材来源类型（analysis）")
+        .option("--groups <ids>", "指定 groups（逗号分隔，配合 --source analysis）")
         .option("--skeleton", "只生成骨架文件（不调用 LLM）")
         .option("--validate", "只验证已有骨架的引用有效性")
         .option("--dry-run", "只预览，不调用模型")
         .option("--force", "覆盖已存在的非骨架文件")
+        .option("--review", "生成后执行 LLM 质量审校")
+        .option("--stage <name>", "从指定流水线阶段开始执行")
         .option("--base-dir <dir>", "知识库根目录（覆盖插件配置）")
         .option("--list-templates", "列出可用模板")
+        .option("--list-types", "列出可用类型定义")
         .action(async (opts) => {
           const baseDir = opts.baseDir || resolveBaseDir();
 
@@ -499,8 +504,32 @@ export default function register(api) {
             return;
           }
 
-          if (!opts.perspective || !opts.template) {
-            console.error("错误: 必须指定 --perspective 和 --template");
+          if (opts.listTypes) {
+            const types = listTypes(baseDir);
+            if (types.length === 0) {
+              console.log("没有可用的类型定义。");
+              return;
+            }
+            console.log("\n可用类型:\n");
+            for (const t of types) {
+              const td = loadType(t.name, baseDir);
+              console.log(`  ${t.name} (${t.source})`);
+              if (td?.description) console.log(`    ${td.description}`);
+              if (td?.split) console.log(`    拆分: ${td.split}, 命名: ${td.fileNaming || "sequence"}`);
+              console.log();
+            }
+            return;
+          }
+
+          const perspectiveParts = opts.perspective ? opts.perspective.split(",").map((s) => s.trim()) : [];
+          const isMultiPerspective = perspectiveParts.length > 1;
+
+          if (!isMultiPerspective && perspectiveParts.length === 0 && !opts.source) {
+            console.error("错误: 必须指定 --perspective 或 --source");
+            return;
+          }
+          if (!opts.template) {
+            console.error("错误: 必须指定 --template");
             return;
           }
 
@@ -508,15 +537,23 @@ export default function register(api) {
           if (opts.skeleton) mode = "skeleton";
           else if (opts.validate) mode = "validate";
 
+          const sourceOpt = opts.source
+            ? { type: opts.source, groups: opts.groups ? opts.groups.split(",").map((s) => s.trim()) : undefined }
+            : undefined;
+
           await runOutput({
             baseDir,
-            perspectiveDir: opts.perspective,
+            perspectiveDir: isMultiPerspective ? perspectiveParts[0] : perspectiveParts[0],
+            perspectives: isMultiPerspective ? perspectiveParts : undefined,
+            source: sourceOpt,
             template: opts.template,
             outputDir: opts.outputDir,
             mode,
             autoWrite: true,
             dryRun: opts.dryRun || false,
             force: opts.force || false,
+            review: opts.review || false,
+            stage: opts.stage,
             klFilter: opts.kl ? opts.kl.split(",").map((s) => s.trim()) : undefined,
             callAgent: mode ? undefined : buildCallAgent(),
             log: (msg) => api.logger.info(msg),
@@ -1152,7 +1189,8 @@ export default function register(api) {
       label: "Knowledge Prism Output",
       description:
         "从视角生成面向读者的产出文件。支持三种模式：skeleton（生成骨架）、validate（验证骨架引用）、generate（默认，调 LLM 生成内容）。" +
-        "推荐两阶段流程：先 skeleton 生成骨架审查引用，再 generate 填充内容。",
+        "推荐两阶段流程：先 skeleton 生成骨架审查引用，再 generate 填充内容。" +
+        "支持多粒度素材（per-kl/per-perspective/per-group）、多视角交叉、从 analysis 直接生成、质量审校和多阶段流水线。",
       parameters: {
         type: "object",
         properties: {
@@ -1162,7 +1200,20 @@ export default function register(api) {
           },
           perspectiveDir: {
             type: "string",
-            description: "视角目录名，如 P23-practice-diary",
+            description: "视角目录名，如 P23-practice-diary。多视角模式下传主视角，并用 perspectives 指定全部。",
+          },
+          perspectives: {
+            type: "array",
+            items: { type: "string" },
+            description: "多视角交叉生成时指定的视角列表（如 [\"P01-xxx\", \"P02-yyy\"]）。省略则使用单一 perspectiveDir。",
+          },
+          source: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: ["cross-perspective", "analysis"], description: "素材来源类型" },
+              groups: { type: "array", items: { type: "string" }, description: "指定 groups（配合 type: analysis）" },
+            },
+            description: "素材来源配置。省略则从 perspectiveDir 的 structure 读取。",
           },
           template: {
             type: "string",
@@ -1185,8 +1236,16 @@ export default function register(api) {
             type: "boolean",
             description: "覆盖已存在的非骨架文件。默认 false。",
           },
+          review: {
+            type: "boolean",
+            description: "生成后执行 LLM 质量审校，报告保存到 _reviews/。默认 false。",
+          },
+          stage: {
+            type: "string",
+            description: "从指定流水线阶段开始执行（需模板声明 stages）。省略则从头开始。",
+          },
         },
-        required: ["perspectiveDir", "template"],
+        required: ["template"],
       },
       async execute(_toolCallId, params) {
         const baseDir = params.baseDir || resolveBaseDir();
@@ -1194,15 +1253,23 @@ export default function register(api) {
         const warnings = [];
         const mode = params.mode || "generate";
 
+        if (!params.perspectiveDir && !params.source && !params.perspectives) {
+          return textResult("错误: 必须指定 perspectiveDir、perspectives 或 source 之一。");
+        }
+
         const result = await runOutput({
           baseDir,
           perspectiveDir: params.perspectiveDir,
+          perspectives: params.perspectives,
+          source: params.source,
           template: params.template,
           outputDir: params.outputDir,
           mode,
           autoWrite: true,
           dryRun: false,
           force: params.force ?? false,
+          review: params.review ?? false,
+          stage: params.stage,
           klFilter: params.klFilter
             ? params.klFilter.split(",").map((s) => s.trim())
             : undefined,
@@ -1218,7 +1285,7 @@ export default function register(api) {
         const parts = [result.message];
         if (result.results) {
           for (const r of result.results) {
-            const label = r.klId ? `${r.klId} → ${r.file}` : r.file;
+            const label = r.id ? `${r.id} → ${r.file}` : r.file;
             parts.push(`  ${r.status}: ${label}`);
           }
         }
@@ -1266,6 +1333,44 @@ export default function register(api) {
           lines.push("");
         }
         lines.push("调用 knowledge_prism_output 并传入 template 参数来生成产出。");
+
+        return textResult(lines.join("\n"));
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_list_types",
+      label: "Knowledge Prism: List Output Types",
+      description: "列出可用的产出类型定义（内置 + 知识库本地自定义类型），包含各类型的读者画像、拆分粒度和质量标准。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录路径。省略则使用插件配置的默认值。",
+          },
+        },
+      },
+      async execute(_toolCallId, params) {
+        const baseDir = params.baseDir || resolveBaseDir();
+        const types = listTypes(baseDir);
+
+        if (types.length === 0) {
+          return textResult("没有可用的产出类型定义。");
+        }
+
+        const lines = [`## 可用类型 (${types.length} 个)`, ""];
+        for (const t of types) {
+          const td = loadType(t.name, baseDir);
+          lines.push(`- **${t.name}** (${t.source})`);
+          if (td?.description) lines.push(`  ${td.description}`);
+          if (td?.split) lines.push(`  拆分: ${td.split}, 命名: ${td.fileNaming || "sequence"}`);
+          lines.push("");
+        }
+        lines.push("模板通过 frontmatter `type: <name>` 引用类型定义。");
 
         return textResult(lines.join("\n"));
       },

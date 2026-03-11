@@ -196,6 +196,7 @@ openclaw prism init <dir> [--name <name>]
 openclaw prism process [--dry-run] [--auto-write] [--stage <n>] [--base-dir <dir>]
 openclaw prism status [--json] [--base-dir <dir>]
 openclaw prism new-perspective <slug> [--name <name>]
+openclaw prism output [--perspective <dir,...>] [--template <name>] [--skeleton] [--review] [--stage <name>] [--source <type>] [--groups <ids>] [--list-types]
 openclaw prism graph [--base-dir <dir>] [--output <path>] [--json] [--perspective <id>]
 openclaw prism register <dir>
 openclaw prism unregister <dir>
@@ -217,7 +218,9 @@ openclaw prism sync [--force]
 | `knowledge_prism_new_perspective` | 创建新视角骨架 |
 | `knowledge_prism_fill_perspective` | 生成 SCQA 或 Key Line 内容 |
 | `knowledge_prism_expand_kl` | 展开 Key Line 为完整论证文档 |
-| `knowledge_prism_output` | 从视角生成面向读者的产出 |
+| `knowledge_prism_output` | 从视角生成面向读者的产出（支持多粒度、多视角、审校、流水线） |
+| `knowledge_prism_list_templates` | 列出可用的输出模板 |
+| `knowledge_prism_list_types` | 列出可用的产出类型定义 |
 | `knowledge_prism_register` | 注册知识库到自动处理列表 |
 | `knowledge_prism_list_registered` | 列出所有已注册知识库及状态 |
 | `knowledge_prism_process_all` | 批量处理所有已注册知识库，变更时自动通知 output inbox |
@@ -237,11 +240,12 @@ openclaw prism sync [--force]
 
 ## 编程 API
 
-`lib/process.mjs` 和 `lib/status.mjs` 导出了可编程接口，方便集成到其他系统：
+`lib/process.mjs`、`lib/status.mjs` 和 `lib/output.mjs` 导出了可编程接口，方便集成到其他系统：
 
 ```javascript
 import { createHttpCaller, runPipeline } from "js-knowledge-prism/lib/process.mjs";
 import { getStatus } from "js-knowledge-prism/lib/status.mjs";
+import { runOutput, listTemplates, listTypes } from "js-knowledge-prism/lib/output.mjs";
 
 // 创建模型调用函数
 const callAgent = createHttpCaller({
@@ -260,6 +264,15 @@ const summary = await runPipeline({
 
 // 查询状态
 const status = getStatus("/path/to/knowledge-base");
+
+// 生成产出（支持多粒度、多源、审校、流水线）
+await runOutput({
+  baseDir: "/path/to/knowledge-base",
+  perspectiveDir: "P01-xxx",
+  template: "practice-diary",
+  review: true,
+  callAgent,
+});
 ```
 
 ## 要求
