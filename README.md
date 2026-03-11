@@ -275,6 +275,15 @@ await runOutput({
 });
 ```
 
+## 扩展技能
+
+`skills/` 目录下提供可选的扩展技能，为 OpenClaw Agent 增加专项能力：
+
+| 技能 | 说明 |
+|------|------|
+| `prism-output-blog` | 将视角转化为博客文章（注册 `prism_blog_generate` 等工具） |
+| `prism-template-author` | 引导创建新的产出模板（决策引导 + scaffold 工具 `prism_scaffold_template`） |
+
 ## 要求
 
 - Node.js >= 18.0.0
