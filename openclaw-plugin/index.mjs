@@ -2110,17 +2110,18 @@ export default function register(api) {
     }
 
     if (strategy === "date-driven") {
-      const { buildAbbrevToGroupsMap, detectNewDates, appendDateKls } = await import("../lib/date-driven-kl.mjs");
+      const { buildAbbrevToGroupsMap, detectNewDates, appendDateKls, detectStaleKls }
+        = await import("../lib/date-driven-kl.mjs");
 
       const newDates = detectNewDates(paths, perspectiveDir);
-      if (newDates.length === 0) {
-        return { status: "skipped", message: "无新日期" };
-      }
 
-      const abbrevToGroups = buildAbbrevToGroupsMap(paths.groupsDir);
-      const appendResult = await appendDateKls({ paths, perspectiveDir, newDates, callAgent, abbrevToGroups });
-      if (!appendResult.success) {
-        return { status: "error", message: appendResult.message };
+      let appendResult = { success: true, message: "无新日期需要追加", newKlIds: [] };
+      if (newDates.length > 0) {
+        const abbrevToGroups = buildAbbrevToGroupsMap(paths.groupsDir);
+        appendResult = await appendDateKls({ paths, perspectiveDir, newDates, callAgent, abbrevToGroups });
+        if (!appendResult.success) {
+          return { status: "error", message: appendResult.message };
+        }
       }
 
       let expandCount = 0;
@@ -2135,11 +2136,32 @@ export default function register(api) {
         }
       }
 
+      const staleKlIds = detectStaleKls(paths, perspectiveDir);
+      let reExpandCount = 0;
+      let reExpandErrors = 0;
+      for (const klId of staleKlIds) {
+        if (appendResult.newKlIds.includes(klId)) continue;
+        try {
+          await runExpandKl({ baseDir, perspectiveDir, klId, autoWrite: true, callAgent });
+          reExpandCount++;
+        } catch (err) {
+          reExpandErrors++;
+          logger?.warn?.(`re-expand ${klId} 失败: ${err.message}`);
+        }
+      }
+
+      if (newDates.length === 0 && staleKlIds.length === 0) {
+        return { status: "skipped", message: "无新日期，无 stale KL" };
+      }
+
       const parts = [appendResult.message];
       if (expandCount > 0 || expandErrors > 0) {
         parts.push(`expand: ${expandCount} 成功` + (expandErrors ? `, ${expandErrors} 失败` : ""));
       }
-      return { status: "refreshed", message: parts.join(", "), newKlIds: appendResult.newKlIds };
+      if (reExpandCount > 0 || reExpandErrors > 0) {
+        parts.push(`re-expand(stale): ${reExpandCount} 成功` + (reExpandErrors ? `, ${reExpandErrors} 失败` : ""));
+      }
+      return { status: "refreshed", message: parts.join(", "), newKlIds: appendResult.newKlIds, staleKlIds };
     }
 
     return { status: "skipped", message: `未知策略: ${strategy}` };
