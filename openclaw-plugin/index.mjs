@@ -204,6 +204,56 @@ export default function register(api) {
   }
 
   // ---------------------------------------------------------------------------
+  // Config-declared output bindings helpers
+  // ---------------------------------------------------------------------------
+
+  function loadConfigBindings(baseDir) {
+    const configPath = join(baseDir, ".knowledgeprism.json");
+    if (!existsSync(configPath)) return [];
+    try {
+      const raw = JSON.parse(readFileSync(configPath, "utf-8"));
+      return (raw.output?.bindings || [])
+        .filter((b) => b.perspectiveDir && b.template)
+        .map((b) => ({
+          perspectiveDir: b.perspectiveDir,
+          template: b.template,
+          klStrategy: b.klStrategy || "synthesis",
+          enabled: b.enabled ?? true,
+        }));
+    } catch {
+      return [];
+    }
+  }
+
+  function mergeBindings(registryBindings, configBindings) {
+    const merged = [...registryBindings];
+    const seen = new Set(
+      registryBindings.map((b) => `${b.perspectiveDir}::${b.template}`),
+    );
+
+    for (const cb of configBindings) {
+      if (!cb.enabled) continue;
+      const key = `${cb.perspectiveDir}::${cb.template}`;
+      if (seen.has(key)) {
+        const existing = merged.find(
+          (b) => b.perspectiveDir === cb.perspectiveDir && b.template === cb.template,
+        );
+        if (existing && cb.klStrategy) existing.klStrategy = cb.klStrategy;
+      } else {
+        merged.push({
+          ...cb,
+          source: "config",
+          lastStructureRefreshAt: null,
+          lastOutputAt: null,
+          lastOutputSummary: null,
+        });
+        seen.add(key);
+      }
+    }
+    return merged;
+  }
+
+  // ---------------------------------------------------------------------------
   // Output inbox/batch helpers (inbox/batch rotation for reliable output cron)
   // ---------------------------------------------------------------------------
 
@@ -1882,6 +1932,14 @@ export default function register(api) {
         const base = registry.bases[idx];
         if (!base.outputBindings) base.outputBindings = [];
 
+        const cfgBindings = loadConfigBindings(absDir);
+        const inConfig = cfgBindings.some(
+          (cb) => cb.perspectiveDir === params.perspectiveDir && cb.template === params.template,
+        );
+        const configHint = inConfig
+          ? "\n注意: 该绑定已在 .knowledgeprism.json 的 output.bindings 中声明，手动绑定将与 config 合并（运行时以 config 的 klStrategy 为准）。"
+          : "";
+
         const enabled = params.enabled ?? true;
         const existing = base.outputBindings.find(
           (b) => b.perspectiveDir === params.perspectiveDir && b.template === params.template,
@@ -1894,7 +1952,7 @@ export default function register(api) {
           existing.klStrategy = klStrategy;
           saveRegistry(registry);
           return textResult(
-            `已更新绑定: ${params.perspectiveDir} + ${params.template} → enabled=${enabled}, klStrategy=${klStrategy}`,
+            `已更新绑定: ${params.perspectiveDir} + ${params.template} → enabled=${enabled}, klStrategy=${klStrategy}${configHint}`,
           );
         }
 
@@ -1909,7 +1967,7 @@ export default function register(api) {
         });
         saveRegistry(registry);
         return textResult(
-          `已绑定: ${base.name} — ${params.perspectiveDir} + ${params.template} (klStrategy=${klStrategy})`,
+          `已绑定: ${base.name} — ${params.perspectiveDir} + ${params.template} (klStrategy=${klStrategy})${configHint}`,
         );
       },
     },
@@ -1952,7 +2010,8 @@ export default function register(api) {
         let totalBindings = 0;
 
         for (const base of targets) {
-          const bindings = base.outputBindings || [];
+          const cfgBindings = loadConfigBindings(base.baseDir);
+          const bindings = mergeBindings(base.outputBindings || [], cfgBindings);
           totalBindings += bindings.length;
           lines.push(`**${base.name}** (${normalizeBaseDir(base.baseDir)})`);
 
@@ -1962,13 +2021,14 @@ export default function register(api) {
             for (const b of bindings) {
               const flag = b.enabled ? "启用" : "禁用";
               const strategy = b.klStrategy || "synthesis";
+              const source = b.source === "config" ? " [来源: config]" : "";
               const lastTs = b.lastOutputAt
                 ? b.lastOutputAt.replace("T", " ").slice(0, 16)
                 : "从未";
               const lastRefresh = b.lastStructureRefreshAt
                 ? b.lastStructureRefreshAt.replace("T", " ").slice(0, 16)
                 : "从未";
-              lines.push(`  - ${b.perspectiveDir} + ${b.template} [${flag}] [klStrategy: ${strategy}]`);
+              lines.push(`  - ${b.perspectiveDir} + ${b.template} [${flag}] [klStrategy: ${strategy}]${source}`);
               lines.push(`    上次 structure 刷新: ${lastRefresh} | 上次产出: ${lastTs}`);
               if (b.lastOutputSummary) lines.push(`    摘要: ${b.lastOutputSummary}`);
             }
@@ -2167,7 +2227,9 @@ export default function register(api) {
               continue;
             }
             const base = registry.bases[idx];
-            const binding = (base.outputBindings || []).find(
+            const cfgBindings = loadConfigBindings(base.baseDir);
+            const allBindings = mergeBindings(base.outputBindings || [], cfgBindings);
+            const binding = allBindings.find(
               (b) => b.perspectiveDir === item.perspectiveDir && b.template === item.template,
             );
             if (!binding || !binding.enabled) continue;
@@ -2337,6 +2399,32 @@ export default function register(api) {
               entry.message = `全部失败 (${errCount} 个)`;
             }
             results.push(entry);
+
+            // Persist runtime state for config-sourced binding into registry
+            if (binding.source === "config") {
+              if (!base.outputBindings) base.outputBindings = [];
+              const regBinding = base.outputBindings.find(
+                (rb) => rb.perspectiveDir === binding.perspectiveDir && rb.template === binding.template,
+              );
+              if (regBinding) {
+                if (binding.lastOutputAt) regBinding.lastOutputAt = binding.lastOutputAt;
+                if (binding.lastOutputSummary) regBinding.lastOutputSummary = binding.lastOutputSummary;
+                if (binding.lastStructureRefreshAt) regBinding.lastStructureRefreshAt = binding.lastStructureRefreshAt;
+                if (binding.failedKLs) regBinding.failedKLs = binding.failedKLs;
+              } else {
+                base.outputBindings.push({
+                  perspectiveDir: binding.perspectiveDir,
+                  template: binding.template,
+                  klStrategy: binding.klStrategy,
+                  enabled: binding.enabled,
+                  source: "config",
+                  lastStructureRefreshAt: binding.lastStructureRefreshAt,
+                  lastOutputAt: binding.lastOutputAt,
+                  lastOutputSummary: binding.lastOutputSummary,
+                  failedKLs: binding.failedKLs || null,
+                });
+              }
+            }
           }
 
           if (!dryRun) {
@@ -2367,7 +2455,11 @@ export default function register(api) {
         // Mtime fallback path (manual trigger or no inbox/retry work)
         // =================================================================
         for (const base of enabledBases) {
-          const bindings = (base.outputBindings || []).filter((b) => b.enabled);
+          const configBindings = loadConfigBindings(base.baseDir);
+          const bindings = mergeBindings(
+            (base.outputBindings || []),
+            configBindings,
+          ).filter((b) => b.enabled);
           if (bindings.length === 0) continue;
 
           if (!existsSync(join(base.baseDir, ".knowledgeprism.json"))) {
@@ -2548,6 +2640,33 @@ export default function register(api) {
 
             results.push(entry);
           }
+
+          // Persist runtime state for config-sourced bindings into registry
+          for (const b of bindings) {
+            if (b.source !== "config") continue;
+            if (!base.outputBindings) base.outputBindings = [];
+            const existing = base.outputBindings.find(
+              (rb) => rb.perspectiveDir === b.perspectiveDir && rb.template === b.template,
+            );
+            if (existing) {
+              if (b.lastOutputAt) existing.lastOutputAt = b.lastOutputAt;
+              if (b.lastOutputSummary) existing.lastOutputSummary = b.lastOutputSummary;
+              if (b.lastStructureRefreshAt) existing.lastStructureRefreshAt = b.lastStructureRefreshAt;
+              if (b.failedKLs) existing.failedKLs = b.failedKLs;
+            } else {
+              base.outputBindings.push({
+                perspectiveDir: b.perspectiveDir,
+                template: b.template,
+                klStrategy: b.klStrategy,
+                enabled: b.enabled,
+                source: "config",
+                lastStructureRefreshAt: b.lastStructureRefreshAt,
+                lastOutputAt: b.lastOutputAt,
+                lastOutputSummary: b.lastOutputSummary,
+                failedKLs: b.failedKLs || null,
+              });
+            }
+          }
         }
 
         if (!dryRun) {
@@ -2555,7 +2674,7 @@ export default function register(api) {
         }
 
         if (results.length === 0) {
-          return textResult("所有已注册知识库均无启用的产出绑定。使用 knowledge_prism_bind_output 添加绑定。");
+          return textResult("所有已注册知识库均无启用的产出绑定。使用 knowledge_prism_bind_output 添加绑定，或在 .knowledgeprism.json 的 output.bindings 中声明。");
         }
 
         const lines = [`自动产出完毕 — mtime 模式（${results.length} 项）`, ""];
