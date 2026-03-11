@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-03-11
+
+### Changed
+
+- **Breaking: `refreshStructure` → `klStrategy`**：绑定的 `refreshStructure: boolean` 字段替换为 `klStrategy: "synthesis" | "date-driven" | "manual"`
+  - `synthesis`（默认）：等价于原来的 `refreshStructure: true`，全量重生成 SCQA + Key Lines + expand
+  - `date-driven`：新增策略，仅扫描 journal 新日期并追加 KL 行 + expand 新 KL（适合日记/日志型视角如 P23）
+  - `manual`：等价于原来的 `refreshStructure: false`，不自动刷新 structure
+- 两处 structure 刷新路径（batch path / mtime fallback）统一提取为 `refreshByStrategy` 公共函数
+
+### Added
+
+- 新增 `lib/date-driven-kl.mjs`：日期驱动 KL 策略的核心逻辑
+  - `detectNewDates(paths, perspectiveDir)`：对比 journal 日期 vs 已注册 KL，返回待追加的新日期
+  - `buildAbbrevToGroupsMap(groupsDir)`：构建 atom 缩写 → groups 映射表
+  - `appendDateKls(opts)`：LLM 生成主题标题，追加 KL 行到 tree/README.md
+
 ## [1.3.0] - 2026-03-11
 
 ### Added

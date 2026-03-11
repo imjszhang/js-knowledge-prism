@@ -57,7 +57,7 @@ The OpenClaw plugin connects to an OpenAI-compatible LLM API to drive extraction
 | `knowledge_prism_unregister` | Remove a knowledge base from automatic processing |
 | `knowledge_prism_list_registered` | List all registered knowledge bases with status |
 | `knowledge_prism_process_all` | Batch process all registered bases; signals output inbox on changes |
-| `knowledge_prism_bind_output` | Bind perspective+template for auto output generation (with `refreshStructure` toggle) |
+| `knowledge_prism_bind_output` | Bind perspective+template for auto output generation (with `klStrategy` option) |
 | `knowledge_prism_list_output_bindings` | List all output bindings and their status |
 | `knowledge_prism_output_all` | Inbox/batch output with crash recovery and retry (structure refresh + change detection) |
 | `knowledge_prism_discover_skills` | Query the extension skill registry |

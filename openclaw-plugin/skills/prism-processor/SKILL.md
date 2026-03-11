@@ -146,7 +146,8 @@ openclaw prism setup-output-cron
 | 用户意图 | 工具调用 |
 |----------|---------|
 | 绑定视角+模板的自动产出 | `knowledge_prism_bind_output(perspectiveDir, template)` |
-| 绑定但不自动刷新 structure | `knowledge_prism_bind_output(perspectiveDir, template, refreshStructure=false)` |
+| 绑定日记型视角（按日期追加 KL） | `knowledge_prism_bind_output(perspectiveDir, template, klStrategy="date-driven")` |
+| 绑定但不自动刷新 structure | `knowledge_prism_bind_output(perspectiveDir, template, klStrategy="manual")` |
 | 暂停某个绑定 | `knowledge_prism_bind_output(perspectiveDir, template, enabled=false)` |
 | 恢复某个绑定 | `knowledge_prism_bind_output(perspectiveDir, template, enabled=true)` |
 | 查看所有绑定 | `knowledge_prism_list_output_bindings` |
@@ -154,7 +155,10 @@ openclaw prism setup-output-cron
 
 绑定信息存储在 `registry.json` 的 `bases[].outputBindings` 数组中。每个绑定包含：
 
-- `refreshStructure`（默认 true）：是否在生成 output 前自动刷新 structure
+- `klStrategy`（默认 `"synthesis"`）：structure 刷新策略
+  - `synthesis`：全量重生成 SCQA + Key Lines + expand（适合论点型视角）
+  - `date-driven`：仅追加新日期的 KL 并 expand（适合日记/日志型视角）
+  - `manual`：不自动刷新 structure（适合手工策划型视角）
 - `failedKLs`（数组）：失败的 KL 列表，含 `klId`、`retries`、`lastError`、`failedAt`、`status`
 
 ---
@@ -195,10 +199,12 @@ openclaw prism setup-output-cron
 
 ### Phase 1: Structure 自动刷新
 
-对 batch 中每个 item（尚未刷新且 `refreshStructure=true` 的）：
+对 batch 中每个 item（尚未刷新且 `klStrategy !== "manual"` 的）：
 
 1. 比较 synthesis/groups 的 mtime 与 `lastStructureRefreshAt`。
-2. 若有变化 → 依次执行 SCQA → Key Lines → expand KL。
+2. 若有变化 → 根据 `klStrategy` 分派刷新策略：
+   - `synthesis`：依次执行 SCQA → Key Lines → expand 全部 KL。
+   - `date-driven`：扫描 journal 新日期 → 追加 KL 行 → expand 仅新 KL。
 3. 更新 `lastStructureRefreshAt`，标记 `item.structureRefreshed = true`。
 4. **checkpoint**：每完成 structure 刷新立即保存 batch 文件。
 
@@ -226,6 +232,6 @@ KL 生成成功时自动从 `failedKLs` 中清除。output cron 启动时若 inb
 ### 安全保护
 
 - `force` 默认 false：已存在的非骨架 output 文件不会被覆盖。
-- `refreshStructure` 默认 true，设为 false 可跳过自动刷新（适用于手动维护 structure 的场景）。
+- `klStrategy` 默认 `"synthesis"`，设为 `"manual"` 可跳过自动刷新（适用于手动维护 structure 的场景），设为 `"date-driven"` 可对日记型视角仅追加新日期 KL。
 - synthesis.md 不存在时跳过 structure 刷新，仍尝试 output 生成（structure 可能有旧内容）。
 - Batch 文件使用 tmp + rename 原子写入，中途崩溃不会损坏进度数据。

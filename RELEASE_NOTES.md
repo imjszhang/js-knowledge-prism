@@ -1,18 +1,19 @@
-# Release Notes — v1.4.0
+# Release Notes — v1.5.0
 
-Output Cron 可靠性升级：inbox/batch 轮转、崩溃恢复、失败重试。
+策略化 Structure 刷新：`klStrategy` 替代 `refreshStructure`，支持日期驱动的 KL 自动追加。
 
 ## Highlights
 
-- **Inbox/Batch 轮转**：`process_all` 完成时自动向 `output-inbox.jsonl` 追加变更信号；`output_all` 读取 inbox 并原子 rename 为 batch，生产端和消费端互不阻塞
-- **崩溃恢复**：每完成一个 Key Line 即更新 batch 文件作为断点，进程中断后重启自动跳过已完成项继续执行
-- **失败重试**：单个 KL 输出失败不中断整体流程，registry 中记录 `failedKLs`，后续 cron 自动重试最多 3 次，超限标记 `permanently_failed`
-- **Cron 表达式修复**：`minutesToCronExpr` 工具函数正确处理 > 60 分钟间隔（`0 */H * * *`），同时修复 `setup-cron` 和 `setup-output-cron`
-- **Fallback 路径**：inbox 为空时自动降级为 mtime 变化检测，兼容手动触发和旧版行为
+- **`klStrategy` 策略分派**：`bind_output` 的 `refreshStructure` 布尔开关升级为 `klStrategy` 枚举，精确控制不同视角类型的 structure 刷新方式
+- **`date-driven` 策略**：专为日记/日志型视角设计 — 自动检测 journal 新日期，匹配已处理的 groups，LLM 生成主题标题，追加 KL 行并 expand，不破坏现有 KL 结构
+- **`synthesis` 策略（默认）**：等价于原 `refreshStructure: true`，全量重生成 SCQA + Key Lines + expand
+- **`manual` 策略**：等价于原 `refreshStructure: false`，不自动刷新
+- **代码去重**：batch path 和 mtime fallback path 的 structure 刷新逻辑统一提取为 `refreshByStrategy` 公共函数
 
 ## Breaking Changes
 
-无。Registry 结构新增 `failedKLs` 字段，旧 registry 自动兼容（视为空数组）。
+- `bind_output` 参数 `refreshStructure` 已移除，替换为 `klStrategy`（`"synthesis"` / `"date-driven"` / `"manual"`）
+- 已有绑定中的 `refreshStructure` 字段不再被读取，需重新调用 `bind_output` 设置 `klStrategy`
 
 ## Install
 
@@ -34,7 +35,7 @@ curl -fsSL https://raw.githubusercontent.com/user/js-knowledge-prism/main/instal
 全链路自动化：journal → synthesis → structure → output，一次绑定，定时全通。
 
 - **全链路自动化**：`output_all` 升级为两阶段执行 — 先检测 synthesis/groups 变化自动刷新 structure（SCQA + Key Lines + expand KL），再检测 structure 变化生成 output，实现从原始笔记到成品文章的完全自动化
-- **Structure 自动刷新**：绑定新增 `refreshStructure` 开关（默认 true），synthesis 有变化时自动按 perspective 去重执行 `fill_perspective` + `expand_kl`，无需手动干预
+- **Structure 自动刷新**：绑定新增 `klStrategy` 策略选项（默认 `synthesis`），synthesis 有变化时自动按 perspective 去重执行 `fill_perspective` + `expand_kl`，无需手动干预
 - **产出绑定（Output Bindings）**：通过 `knowledge_prism_bind_output` 灵活配置哪些视角+模板组合参与自动产出，支持多对多绑定和独立启停
 - **mtime 变化检测**：双层变化检测 — synthesis/groups mtime 驱动 structure 刷新，structure mtime 驱动 output 生成，避免无效 LLM 调用
 - **CLI `setup-output-cron`**：一键配置产出定时任务，默认每 120 分钟执行，与处理 cron 独立互不干扰

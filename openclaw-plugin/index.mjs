@@ -1714,8 +1714,8 @@ export default function register(api) {
       label: "Knowledge Prism: Bind Output",
       description:
         "为已注册知识库绑定一对 视角+模板 的自动产出配置。绑定后 cron 定时任务会自动检测变化并生成 output。" +
-        "refreshStructure=true（默认）时，生成前会先自动刷新 structure（SCQA + Key Lines + expand KL）。" +
-        "传入 enabled=false 可暂停自动产出而不移除绑定。重复绑定相同 perspectiveDir+template 只更新 enabled/refreshStructure 状态。",
+        "klStrategy 控制 structure 刷新策略：synthesis=全量重生成（默认），date-driven=仅追加新日期 KL，manual=不自动刷新。" +
+        "传入 enabled=false 可暂停自动产出而不移除绑定。重复绑定相同 perspectiveDir+template 只更新 enabled/klStrategy 状态。",
       parameters: {
         type: "object",
         properties: {
@@ -1735,9 +1735,12 @@ export default function register(api) {
             type: "boolean",
             description: "是否启用自动产出。默认 true。传 false 可暂停。",
           },
-          refreshStructure: {
-            type: "boolean",
-            description: "生成 output 前是否自动刷新 structure（SCQA + Key Lines + expand KL）。默认 true。",
+          klStrategy: {
+            type: "string",
+            enum: ["synthesis", "date-driven", "manual"],
+            description:
+              "structure 刷新策略。synthesis=全量重生成 SCQA+KL+expand（默认）；" +
+              "date-driven=仅追加新日期的 KL（适合日记/日志型视角）；manual=不自动刷新。",
           },
         },
         required: ["perspectiveDir", "template"],
@@ -1779,14 +1782,14 @@ export default function register(api) {
           (b) => b.perspectiveDir === params.perspectiveDir && b.template === params.template,
         );
 
-        const refreshStructure = params.refreshStructure ?? true;
+        const klStrategy = params.klStrategy || "synthesis";
 
         if (existing) {
           existing.enabled = enabled;
-          existing.refreshStructure = refreshStructure;
+          existing.klStrategy = klStrategy;
           saveRegistry(registry);
           return textResult(
-            `已更新绑定: ${params.perspectiveDir} + ${params.template} → enabled=${enabled}, refreshStructure=${refreshStructure}`,
+            `已更新绑定: ${params.perspectiveDir} + ${params.template} → enabled=${enabled}, klStrategy=${klStrategy}`,
           );
         }
 
@@ -1794,14 +1797,14 @@ export default function register(api) {
           perspectiveDir: params.perspectiveDir,
           template: params.template,
           enabled,
-          refreshStructure,
+          klStrategy,
           lastStructureRefreshAt: null,
           lastOutputAt: null,
           lastOutputSummary: null,
         });
         saveRegistry(registry);
         return textResult(
-          `已绑定: ${base.name} — ${params.perspectiveDir} + ${params.template}`,
+          `已绑定: ${base.name} — ${params.perspectiveDir} + ${params.template} (klStrategy=${klStrategy})`,
         );
       },
     },
@@ -1853,14 +1856,14 @@ export default function register(api) {
           } else {
             for (const b of bindings) {
               const flag = b.enabled ? "启用" : "禁用";
-              const refresh = (b.refreshStructure ?? true) ? "自动刷新" : "手动";
+              const strategy = b.klStrategy || "synthesis";
               const lastTs = b.lastOutputAt
                 ? b.lastOutputAt.replace("T", " ").slice(0, 16)
                 : "从未";
               const lastRefresh = b.lastStructureRefreshAt
                 ? b.lastStructureRefreshAt.replace("T", " ").slice(0, 16)
                 : "从未";
-              lines.push(`  - ${b.perspectiveDir} + ${b.template} [${flag}] [structure: ${refresh}]`);
+              lines.push(`  - ${b.perspectiveDir} + ${b.template} [${flag}] [klStrategy: ${strategy}]`);
               lines.push(`    上次 structure 刷新: ${lastRefresh} | 上次产出: ${lastTs}`);
               if (b.lastOutputSummary) lines.push(`    摘要: ${b.lastOutputSummary}`);
             }
@@ -1891,6 +1894,90 @@ export default function register(api) {
       }
     }
     return latest;
+  }
+
+  /**
+   * Run structure refresh according to the binding's klStrategy.
+   * @returns {{ status: "refreshed"|"error"|"skipped", message: string, newKlIds?: string[] }}
+   */
+  async function refreshByStrategy({
+    strategy, baseDir, perspectiveDir, paths, perspPath,
+    callAgent, logger, runFillPerspective, runExpandKl,
+  }) {
+    if (strategy === "manual") {
+      return { status: "skipped", message: "klStrategy=manual" };
+    }
+
+    if (strategy === "synthesis") {
+      const scqaResult = await runFillPerspective({
+        baseDir, perspectiveDir, stage: "scqa", autoWrite: true, callAgent,
+      });
+      const klResult = await runFillPerspective({
+        baseDir, perspectiveDir, stage: "keyline", autoWrite: true, callAgent,
+      });
+
+      let expandCount = 0;
+      let expandErrors = 0;
+      const treePath = join(perspPath, "tree", "README.md");
+      if (existsSync(treePath)) {
+        const treeContent = readFileSync(treePath, "utf-8");
+        const keyLines = parseKeyLineTable(treeContent);
+        for (const kl of keyLines) {
+          try {
+            await runExpandKl({ baseDir, perspectiveDir, klId: kl.klId, autoWrite: true, callAgent });
+            expandCount++;
+          } catch (err) {
+            expandErrors++;
+            logger?.warn?.(`expand ${kl.klId} 失败: ${err.message}`);
+          }
+        }
+      }
+
+      const parts = [];
+      if (scqaResult.success) parts.push("SCQA ✓");
+      else parts.push(`SCQA ✗ ${scqaResult.message?.slice(0, 60)}`);
+      if (klResult.success) parts.push("Key Lines ✓");
+      else parts.push(`Key Lines ✗ ${klResult.message?.slice(0, 60)}`);
+      if (expandCount > 0 || expandErrors > 0) {
+        parts.push(`expand KL: ${expandCount} 成功` + (expandErrors ? `, ${expandErrors} 失败` : ""));
+      }
+      return { status: "refreshed", message: parts.join(", ") };
+    }
+
+    if (strategy === "date-driven") {
+      const { buildAbbrevToGroupsMap, detectNewDates, appendDateKls } = await import("../lib/date-driven-kl.mjs");
+
+      const newDates = detectNewDates(paths, perspectiveDir);
+      if (newDates.length === 0) {
+        return { status: "skipped", message: "无新日期" };
+      }
+
+      const abbrevToGroups = buildAbbrevToGroupsMap(paths.groupsDir);
+      const appendResult = await appendDateKls({ paths, perspectiveDir, newDates, callAgent, abbrevToGroups });
+      if (!appendResult.success) {
+        return { status: "error", message: appendResult.message };
+      }
+
+      let expandCount = 0;
+      let expandErrors = 0;
+      for (const klId of appendResult.newKlIds) {
+        try {
+          await runExpandKl({ baseDir, perspectiveDir, klId, autoWrite: true, callAgent });
+          expandCount++;
+        } catch (err) {
+          expandErrors++;
+          logger?.warn?.(`expand ${klId} 失败: ${err.message}`);
+        }
+      }
+
+      const parts = [appendResult.message];
+      if (expandCount > 0 || expandErrors > 0) {
+        parts.push(`expand: ${expandCount} 成功` + (expandErrors ? `, ${expandErrors} 失败` : ""));
+      }
+      return { status: "refreshed", message: parts.join(", "), newKlIds: appendResult.newKlIds };
+    }
+
+    return { status: "skipped", message: `未知策略: ${strategy}` };
   }
 
   api.registerTool(
@@ -1989,7 +2076,8 @@ export default function register(api) {
             const perspPath = join(paths.structureDir, item.perspectiveDir);
 
             // --- Phase 1: Structure refresh (once per batch item, skip if already done or retry batch) ---
-            if (!item.structureRefreshed && (binding.refreshStructure ?? true) && !dryRun) {
+            const batchStrategy = binding.klStrategy || "synthesis";
+            if (!item.structureRefreshed && batchStrategy !== "manual" && !dryRun) {
               if (existsSync(perspPath) && existsSync(paths.synthesisPath)) {
                 const synthMtime = statSync(paths.synthesisPath).mtimeMs;
                 const groupsMtime = getLatestMtime(paths.groupsDir);
@@ -1999,49 +2087,21 @@ export default function register(api) {
                   : 0;
 
                 if (analysisMtime > lastRefreshMs) {
-                  const refreshEntry = { name: base.name, binding: `${item.perspectiveDir} [structure 刷新]` };
+                  const refreshEntry = { name: base.name, binding: `${item.perspectiveDir} [structure 刷新 ${batchStrategy}]` };
                   try {
-                    const scqaResult = await runFillPerspective({
-                      baseDir: base.baseDir, perspectiveDir: item.perspectiveDir,
-                      stage: "scqa", autoWrite: true, callAgent,
+                    const refreshResult = await refreshByStrategy({
+                      strategy: batchStrategy,
+                      baseDir: base.baseDir,
+                      perspectiveDir: item.perspectiveDir,
+                      paths, perspPath, callAgent,
+                      logger: api.logger,
+                      runFillPerspective, runExpandKl,
                     });
-                    const klResult = await runFillPerspective({
-                      baseDir: base.baseDir, perspectiveDir: item.perspectiveDir,
-                      stage: "keyline", autoWrite: true, callAgent,
-                    });
-
-                    let expandCount = 0;
-                    let expandErrors = 0;
-                    const treePath = join(perspPath, "tree", "README.md");
-                    if (existsSync(treePath)) {
-                      const treeContent = readFileSync(treePath, "utf-8");
-                      const keyLines = parseKeyLineTable(treeContent);
-                      for (const kl of keyLines) {
-                        try {
-                          await runExpandKl({
-                            baseDir: base.baseDir, perspectiveDir: item.perspectiveDir,
-                            klId: kl.klId, autoWrite: true, callAgent,
-                          });
-                          expandCount++;
-                        } catch (err) {
-                          expandErrors++;
-                          api.logger.warn(`[${base.name}] expand ${kl.klId} 失败: ${err.message}`);
-                        }
-                      }
+                    refreshEntry.status = refreshResult.status;
+                    refreshEntry.message = refreshResult.message;
+                    if (refreshResult.status === "refreshed") {
+                      binding.lastStructureRefreshAt = new Date().toISOString();
                     }
-
-                    binding.lastStructureRefreshAt = new Date().toISOString();
-
-                    const parts = [];
-                    if (scqaResult.success) parts.push("SCQA ✓");
-                    else parts.push(`SCQA ✗ ${scqaResult.message?.slice(0, 60)}`);
-                    if (klResult.success) parts.push("Key Lines ✓");
-                    else parts.push(`Key Lines ✗ ${klResult.message?.slice(0, 60)}`);
-                    if (expandCount > 0 || expandErrors > 0) {
-                      parts.push(`expand KL: ${expandCount} 成功` + (expandErrors ? `, ${expandErrors} 失败` : ""));
-                    }
-                    refreshEntry.status = "refreshed";
-                    refreshEntry.message = parts.join(", ");
                   } catch (err) {
                     refreshEntry.status = "error";
                     refreshEntry.message = `structure 刷新失败: ${err.message?.slice(0, 150)}`;
@@ -2214,7 +2274,8 @@ export default function register(api) {
           const refreshedPerspectives = new Set();
 
           for (const binding of bindings) {
-            if (!(binding.refreshStructure ?? true)) continue;
+            const mtimeStrategy = binding.klStrategy || "synthesis";
+            if (mtimeStrategy === "manual") continue;
             if (refreshedPerspectives.has(binding.perspectiveDir)) continue;
 
             const perspPath = join(paths.structureDir, binding.perspectiveDir);
@@ -2240,57 +2301,29 @@ export default function register(api) {
             }
 
             if (dryRun) {
-              results.push({ name: base.name, binding: `${binding.perspectiveDir} [structure 刷新]`, status: "dry-run", message: "检测到变化，待刷新" });
+              results.push({ name: base.name, binding: `${binding.perspectiveDir} [structure 刷新 ${mtimeStrategy}]`, status: "dry-run", message: "检测到变化，待刷新" });
               refreshedPerspectives.add(binding.perspectiveDir);
               continue;
             }
 
-            const refreshEntry = { name: base.name, binding: `${binding.perspectiveDir} [structure 刷新]` };
+            const refreshEntry = { name: base.name, binding: `${binding.perspectiveDir} [structure 刷新 ${mtimeStrategy}]` };
             try {
-              const scqaResult = await runFillPerspective({
-                baseDir: base.baseDir, perspectiveDir: binding.perspectiveDir,
-                stage: "scqa", autoWrite: true, callAgent,
+              const refreshResult = await refreshByStrategy({
+                strategy: mtimeStrategy,
+                baseDir: base.baseDir,
+                perspectiveDir: binding.perspectiveDir,
+                paths, perspPath, callAgent,
+                logger: api.logger,
+                runFillPerspective, runExpandKl,
               });
-              const klResult = await runFillPerspective({
-                baseDir: base.baseDir, perspectiveDir: binding.perspectiveDir,
-                stage: "keyline", autoWrite: true, callAgent,
-              });
-
-              let expandCount = 0;
-              let expandErrors = 0;
-              const treePath = join(perspPath, "tree", "README.md");
-              if (existsSync(treePath)) {
-                const treeContent = readFileSync(treePath, "utf-8");
-                const keyLines = parseKeyLineTable(treeContent);
-                for (const kl of keyLines) {
-                  try {
-                    await runExpandKl({
-                      baseDir: base.baseDir, perspectiveDir: binding.perspectiveDir,
-                      klId: kl.klId, autoWrite: true, callAgent,
-                    });
-                    expandCount++;
-                  } catch (err) {
-                    expandErrors++;
-                    api.logger.warn(`[${base.name}] expand ${kl.klId} 失败: ${err.message}`);
-                  }
+              refreshEntry.status = refreshResult.status;
+              refreshEntry.message = refreshResult.message;
+              if (refreshResult.status === "refreshed") {
+                const nowIso = new Date().toISOString();
+                for (const b of bindings) {
+                  if (b.perspectiveDir === binding.perspectiveDir) b.lastStructureRefreshAt = nowIso;
                 }
               }
-
-              const nowIso = new Date().toISOString();
-              for (const b of bindings) {
-                if (b.perspectiveDir === binding.perspectiveDir) b.lastStructureRefreshAt = nowIso;
-              }
-
-              const parts = [];
-              if (scqaResult.success) parts.push("SCQA ✓");
-              else parts.push(`SCQA ✗ ${scqaResult.message?.slice(0, 60)}`);
-              if (klResult.success) parts.push("Key Lines ✓");
-              else parts.push(`Key Lines ✗ ${klResult.message?.slice(0, 60)}`);
-              if (expandCount > 0 || expandErrors > 0) {
-                parts.push(`expand KL: ${expandCount} 成功` + (expandErrors ? `, ${expandErrors} 失败` : ""));
-              }
-              refreshEntry.status = "refreshed";
-              refreshEntry.message = parts.join(", ");
             } catch (err) {
               refreshEntry.status = "error";
               refreshEntry.message = `structure 刷新失败: ${err.message?.slice(0, 150)}`;
