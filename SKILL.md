@@ -19,6 +19,54 @@ metadata:
 
 A pyramid-principle-based knowledge distillation toolkit that transforms scattered journal notes into structured knowledge outputs.
 
+## First Step: Detect Runtime Mode
+
+Before performing any operation, detect whether this project is running as an **OpenClaw plugin** or in **standalone CLI mode**. The result determines configuration paths, command prefixes, and available features.
+
+### Detection Steps
+
+1. Check if `openclaw` command exists on PATH (Windows: `where openclaw`, macOS/Linux: `which openclaw`)
+2. If exists, read `~/.openclaw/openclaw.json` and look for `js-knowledge-prism` in `plugins.entries` with `enabled: true`
+3. Verify that `plugins.load.paths` contains a path pointing to this project's `openclaw-plugin/` directory
+
+If **all three checks pass** → use **OpenClaw Plugin Mode**. Otherwise → use **Standalone CLI Mode**.
+
+### Mode Comparison
+
+| Aspect | OpenClaw Plugin Mode | Standalone CLI Mode |
+|--------|---------------------|-------------------|
+| Configuration | `~/.openclaw/openclaw.json` → `plugins.entries.js-knowledge-prism.config` | `.knowledgeprism.json` + `.env` |
+| Command prefix | `openclaw prism <cmd>` | `npx js-knowledge-prism <cmd>` |
+| AI tools | `knowledge_prism_*` (18 tools via OpenClaw Agent) | Not available (use CLI) |
+| Cron auto-processing | `openclaw prism setup-cron` / `setup-output-cron` | Not available |
+| Register / batch | `knowledge_prism_register` / `process_all` / `output_all` | Not available |
+| Web UI | `http://<host>/plugins/js-knowledge/prism/` | Not available |
+| Runtime data | `.openclaw/prism-processor/` (registry, inbox, batch) | None |
+| Memory sync | Automatic to `work_dir/memory-export/` | Not available |
+
+### OpenClaw Plugin Mode
+
+When the plugin is deployed:
+
+- **CLI**: always use `openclaw prism ...` instead of `npx js-knowledge-prism ...`
+- **AI tools**: prefer `knowledge_prism_*` tools when invoked from an OpenClaw Agent session
+- **Config**: modify `~/.openclaw/openclaw.json` for API endpoints, model, cron intervals, etc.; do NOT edit `.knowledgeprism.json` for plugin-managed settings
+- **Cron**: manage via `openclaw prism setup-cron` / `openclaw prism setup-output-cron`
+- **Registration**: use `openclaw prism register <dir>` to add knowledge bases for batch auto-processing
+- **Output bindings**: use `knowledge_prism_bind_output` to configure automatic output generation
+- **Runtime data**: check `.openclaw/prism-processor/registry.json` for registered bases and binding state
+
+### Standalone CLI Mode
+
+When running without OpenClaw:
+
+- **CLI**: use `npx js-knowledge-prism <cmd>`
+- **Config**: `.knowledgeprism.json` for processing params, `.env` for API credentials (see environment variable table in README)
+- **No cron / register / batch** features — run `process` and `output` manually
+- **No AI tools** — all interaction through CLI commands
+
+---
+
 ## What it does
 
 Knowledge Prism processes journal notes through a three-layer pipeline:
