@@ -20,16 +20,22 @@ export default function register(api) {
     return { content: [{ type: "text", text }] };
   }
 
-  function resolvePromptsDir(baseDir) {
-    const local = join(baseDir, "outputs", "_templates", "prompts");
-    if (existsSync(local)) return local;
-    return join(PROJECT_ROOT, "templates", "outputs", "prompts");
+  function resolvePromptsDir(baseDir, target) {
+    if (target === "builtin") {
+      return join(PROJECT_ROOT, "templates", "outputs", "prompts");
+    }
+    const local = join(baseDir, "outputs", "_templates");
+    if (!existsSync(local)) mkdirSync(local, { recursive: true });
+    return local;
   }
 
-  function resolveComponentsDir(baseDir) {
+  function resolveComponentsDir(baseDir, target) {
+    if (target === "builtin") {
+      return join(PROJECT_ROOT, "templates", "outputs", "components");
+    }
     const local = join(baseDir, "outputs", "_templates", "components");
-    if (existsSync(local)) return local;
-    return join(PROJECT_ROOT, "templates", "outputs", "components");
+    if (!existsSync(local)) mkdirSync(local, { recursive: true });
+    return local;
   }
 
   // ---- Tool: prism_scaffold_template ----------------------------------------
@@ -39,7 +45,7 @@ export default function register(api) {
       name: "prism_scaffold_template",
       label: "Prism: Scaffold Output Template",
       description:
-        "在 templates/outputs/prompts/ 下生成一个新模板的骨架文件（frontmatter + 区段占位）。" +
+        "在知识库 outputs/_templates/ 下生成一个新模板的骨架文件（frontmatter + 区段占位）。" +
         "纯文件操作，不调用 LLM。生成后需手动填写 prompt 内容。",
       parameters: {
         type: "object",
@@ -90,6 +96,11 @@ export default function register(api) {
               type: { type: "string", enum: ["cross-perspective", "analysis"] },
             },
             description: "素材来源配置（可选）。",
+          },
+          target: {
+            type: "string",
+            enum: ["local", "builtin"],
+            description: "写入目标。local（默认）写入知识库 _templates/；builtin 写入项目内置目录（仅维护者使用）。",
           },
           baseDir: {
             type: "string",
@@ -208,7 +219,8 @@ export default function register(api) {
 
         const content = fmLines.join("\n") + "\n\n" + sections.join("\n");
 
-        const promptsDir = resolvePromptsDir(baseDir);
+        const target = params.target || "local";
+        const promptsDir = resolvePromptsDir(baseDir, target);
         const outPath = join(promptsDir, `${templateName}.md`);
 
         if (!existsSync(promptsDir)) {
@@ -239,7 +251,7 @@ export default function register(api) {
       name: "prism_scaffold_component",
       label: "Prism: Scaffold Prompt Component",
       description:
-        "在 templates/outputs/components/ 下生成一个新组件的占位文件。" +
+        "在知识库 outputs/_templates/components/ 下生成一个新组件的占位文件。" +
         "用于创建 persona、style 等可复用 prompt 片段。纯文件操作。",
       parameters: {
         type: "object",
@@ -252,6 +264,11 @@ export default function register(api) {
             type: "string",
             description: "组件内容。省略则生成占位注释。",
           },
+          target: {
+            type: "string",
+            enum: ["local", "builtin"],
+            description: "写入目标。local（默认）写入知识库 _templates/components/；builtin 写入项目内置目录（仅维护者使用）。",
+          },
           baseDir: {
             type: "string",
             description: "知识库根目录。省略则使用插件配置。",
@@ -262,8 +279,9 @@ export default function register(api) {
       async execute(_toolCallId, params) {
         const baseDir = params.baseDir || resolveBaseDir();
         const componentName = params.name.replace(/\.md$/, "") + ".md";
+        const target = params.target || "local";
 
-        const componentsDir = resolveComponentsDir(baseDir);
+        const componentsDir = resolveComponentsDir(baseDir, target);
         const outPath = join(componentsDir, componentName);
 
         if (existsSync(outPath)) {

@@ -79,7 +79,8 @@ prism_scaffold_template({
 })
 ```
 
-工具会在 `templates/outputs/prompts/` 下生成带正确 frontmatter 和空区段占位的模板文件。
+工具默认将模板写入知识库的 `outputs/_templates/` 目录（本地优先于内置）。
+仅项目维护者在维护内置模板时需传 `target: "builtin"`。
 
 如果需要新组件，调用 `prism_scaffold_component`：
 
@@ -87,6 +88,8 @@ prism_scaffold_template({
 prism_scaffold_component({ name: "persona/teacher.md" })
 prism_scaffold_component({ name: "style/tutorial.md" })
 ```
+
+组件同样默认写入知识库 `outputs/_templates/components/`。
 
 ### Step 2: Fill — 填写 Prompt 内容
 
@@ -139,5 +142,5 @@ npx js-knowledge-prism output --perspective <any> --template <name> --dry-run
 
 | Tool | Description |
 |------|-------------|
-| `prism_scaffold_template` | 生成模板骨架文件（frontmatter + 区段占位） |
-| `prism_scaffold_component` | 生成组件占位文件 |
+| `prism_scaffold_template` | 在知识库 `_templates/` 下生成模板骨架文件（frontmatter + 区段占位） |
+| `prism_scaffold_component` | 在知识库 `_templates/components/` 下生成组件占位文件 |

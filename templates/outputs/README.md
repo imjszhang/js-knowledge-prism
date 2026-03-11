@@ -40,7 +40,10 @@ flowchart LR
 outputs/
   README.md           # 本文件
   INDEX.md.tpl        # 产出索引模板
-  components/         # 可复用 Prompt 组件
+  _templates/         # 知识库自定义模板（优先于内置）
+    components/       #   自定义组件
+    types/            #   自定义类型
+  components/         # 内置 Prompt 组件
     constraints.md    #   全局硬性约束
     persona/          #   人设组件
       blogger.md
@@ -48,12 +51,24 @@ outputs/
       narrative.md
     review/           #   审校组件
       base.md
-  types/              # 产出类型定义
+  types/              # 内置类型定义
     diary.md          #   日记类型
     blog.md           #   博客类型
-  prompts/            # Prompt 模板
+  prompts/            # 内置 Prompt 模板
     practice-diary.md #   实践日记模板
 ```
+
+## 模板查找优先级
+
+引擎加载模板、组件和类型时按以下顺序查找，找到即停：
+
+| 资源 | 1. 知识库自定义（优先） | 2. 内置（回退） |
+| ---- | ---- | ---- |
+| 模板 | `outputs/_templates/*.md` | `outputs/prompts/` |
+| 组件 | `outputs/_templates/components/` | `outputs/components/` |
+| 类型 | `outputs/_templates/types/` | `outputs/types/` |
+
+与内置同名的文件会覆盖内置版本。通过 `prism_scaffold_template` / `prism_scaffold_component` 创建的自定义模板默认写入 `_templates/`。
 
 ## 核心概念
 
@@ -65,8 +80,6 @@ outputs/
 - `persona/` — 人设定义（技术博主、教程作者等）
 - `style/` — 风格定义（叙事驱动、结构化教程等）
 - `review/` — 审校标准
-
-知识库可在 `outputs/_templates/components/` 下放置本地组件覆盖 builtin。
 
 ### 类型（Types）
 
