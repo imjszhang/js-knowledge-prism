@@ -273,16 +273,24 @@ export default function register(api) {
     const inboxEntries = readOutputInbox();
     if (inboxEntries.length === 0) return null;
 
-    const baseDirs = [...new Set(inboxEntries.map((e) => normalizeBaseDir(e.baseDir)))];
+    const basePerspectives = new Map();
+    for (const entry of inboxEntries) {
+      const bd = normalizeBaseDir(entry.baseDir);
+      const existing = basePerspectives.get(bd) || new Set();
+      for (const p of (entry.perspectives || [])) existing.add(p);
+      basePerspectives.set(bd, existing);
+    }
+
     const registry = loadRegistry();
 
     const items = [];
-    for (const bd of baseDirs) {
+    for (const [bd, inboxPerspectives] of basePerspectives) {
       const idx = findBaseIndex(registry, bd);
       if (idx < 0) continue;
       const base = registry.bases[idx];
       const bindings = (base.outputBindings || []).filter((b) => b.enabled);
       for (const binding of bindings) {
+        if (inboxPerspectives.size > 0 && !inboxPerspectives.has(binding.perspectiveDir)) continue;
         items.push({
           baseDir: bd,
           perspectiveDir: binding.perspectiveDir,
