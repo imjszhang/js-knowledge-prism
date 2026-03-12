@@ -221,3 +221,56 @@ LLM 的系统提示。定义角色、风格、约束和输出格式。
 - Unit Prompt 按 per-kl 变量注入素材 + 写作指令
 - Skeleton Template 使用骨架专用变量
 - Review Prompt 引入审校组件 + 生成内容/源素材变量
+
+---
+
+## 改写定义（Rewrite）Schema
+
+改写定义是独立于模板的风格变换资源，对已生成产出进行后处理。
+
+### Rewrite Frontmatter 字段
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `name` | string | 是 | — | 改写定义唯一标识（应与文件名一致） |
+| `description` | string | 否 | — | 用途简述 |
+| `platform` | string | 否 | `generic` | 目标平台：`wechat` / `zhihu` / `twitter` / `generic` |
+| `preserveStructure` | boolean | 否 | `false` | 是否保留原文章节结构 |
+| `preserveLinks` | boolean | 否 | `true` | 是否保留 Markdown 链接 |
+| `preserveFrontmatter` | boolean | 否 | `false` | 是否保留原文 frontmatter |
+
+### Rewrite 变量表
+
+| 变量 | 说明 |
+|------|------|
+| `article_content` | 原文正文（去除 frontmatter 后的 Markdown 内容） |
+| `source_context` | 从原文 frontmatter refs 自动加载的补充素材（journal/groups），截取前 3000 字符。无 refs 时为"（无补充素材）" |
+
+### Rewrite Review 变量表
+
+| 变量 | 说明 |
+|------|------|
+| `rewritten_content` | 改写后的内容 |
+| `article_content` | 改写前的原文正文 |
+
+### Rewrite 区段规范
+
+#### `# Rewrite Prompt`（必需）
+
+改写提示词。定义风格规则、格式要求、禁止项，并在末尾使用 `{{article_content}}` 和 `{{source_context}}` 注入原文和素材。
+
+可使用 `{{@include}}` 引入组件（如自定义的 style 组件）。
+
+#### `# Review Prompt`（可选）
+
+改写后的信息保留度审校。使用 `{{rewritten_content}}` 和 `{{article_content}}`。运行时加 `--review` 触发。
+
+### 内置改写定义清单
+
+| 名称 | 平台 | 说明 |
+|------|------|------|
+| `kzk-wechat` | wechat | 微信公众号卡兹克风格（口语化、一句话一段、钩子开头、三连 CTA） |
+
+### 范例改写定义
+
+完整范例参见 `templates/outputs/rewrites/kzk-wechat.md`。

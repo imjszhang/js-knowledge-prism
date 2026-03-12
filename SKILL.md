@@ -1,7 +1,7 @@
 ---
 name: js-knowledge-prism
 description: Pyramid-principle knowledge distillation — extract atoms, form groups, synthesize insights from journal notes.
-version: 1.4.0
+version: 1.7.0
 metadata:
   openclaw:
     emoji: "\U0001F48E"
@@ -100,12 +100,14 @@ The OpenClaw plugin connects to an OpenAI-compatible LLM API to drive extraction
 | `knowledge_prism_fill_perspective` | Generate SCQA or Key Line content for a perspective |
 | `knowledge_prism_expand_kl` | Expand a Key Line into a full supporting argument document |
 | `knowledge_prism_output` | Generate reader-facing output from a perspective |
+| `knowledge_prism_rewrite` | Apply style rewrite to existing output files (single or batch) |
 | `knowledge_prism_list_templates` | List available output templates |
+| `knowledge_prism_list_rewrites` | List available rewrite definitions |
 | `knowledge_prism_register` | Register a knowledge base for automatic cron processing |
 | `knowledge_prism_unregister` | Remove a knowledge base from automatic processing |
 | `knowledge_prism_list_registered` | List all registered knowledge bases with status |
 | `knowledge_prism_process_all` | Batch process all registered bases; signals output inbox on changes |
-| `knowledge_prism_bind_output` | Bind perspective+template for auto output generation (with `klStrategy` option) |
+| `knowledge_prism_bind_output` | Bind perspective+template for auto output generation (with `klStrategy` and optional `rewrites`) |
 | `knowledge_prism_list_output_bindings` | List all output bindings and their status |
 | `knowledge_prism_output_all` | Inbox/batch output with crash recovery and retry (structure refresh + change detection) |
 | `knowledge_prism_discover_skills` | Query the extension skill registry |
@@ -120,6 +122,7 @@ openclaw prism status [--json]         View processing status
 openclaw prism graph [--base-dir]      Generate knowledge graph HTML
 openclaw prism new-perspective <slug>  Create new perspective from template
 openclaw prism output [--perspective]  Generate reader-facing output
+openclaw prism rewrite --style <name>  Apply style rewrite to output files
 openclaw prism register <dir>          Register knowledge base for auto-processing
 openclaw prism unregister <dir>        Remove from auto-processing list
 openclaw prism registered [--status]   List registered knowledge bases
@@ -150,7 +153,7 @@ js-knowledge-prism/
 ├── openclaw-plugin/
 │   ├── openclaw.plugin.json           ← Plugin manifest (config schema, UI hints)
 │   ├── package.json                   ← ESM module descriptor
-│   ├── index.mjs                      ← Plugin logic — 18 AI tools + CLI + HTTP routes
+│   ├── index.mjs                      ← Plugin logic — 20 AI tools + CLI + HTTP routes
 │   ├── output-inbox.jsonl             ← (runtime) change signals from process_all
 │   ├── output-batch-*.json            ← (runtime) active batch for crash recovery
 │   ├── output-archive/                ← (runtime) completed batch archive
@@ -167,10 +170,13 @@ js-knowledge-prism/
 │   ├── fill-perspective.mjs           ← SCQA/Key Line generation
 │   ├── expand-kl.mjs                  ← Key Line expansion
 │   ├── output.mjs                     ← Reader-facing output generation
+│   ├── rewrite.mjs                    ← Style rewrite engine (post-processing)
 │   └── utils.mjs                      ← Shared utilities
 └── templates/
     ├── graph.html                     ← 3D knowledge graph template
-    └── graph-hub.html                 ← Web UI hub page for multi-base graph overview
+    ├── graph-hub.html                 ← Web UI hub page for multi-base graph overview
+    └── outputs/
+        └── rewrites/                  ← Built-in rewrite definitions (kzk-wechat, etc.)
 ```
 
 > `openclaw-plugin/index.mjs` imports from `../lib/` via relative paths, so the directory layout must be preserved.
@@ -292,6 +298,8 @@ Knowledge Prism supports extension skills that add specialized output capabiliti
 | Skill | Description |
 |-------|-------------|
 | **prism-output-blog** | Transform perspectives into blog-ready articles |
+| **prism-template-author** | Guide creation of new output templates (scaffold + decision flow) |
+| **prism-rewrite-author** | Guide creation of new rewrite definitions (scaffold + import tools) |
 
 Use `knowledge_prism_discover_skills` to list available extensions, or `knowledge_prism_install_skill` to install them.
 

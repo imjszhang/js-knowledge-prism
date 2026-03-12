@@ -19,6 +19,7 @@ js-knowledge-prism v${pkg.version}
   status                  查看待处理状态
   new-perspective <slug>  从模板创建新视角
   output                  从视角生成面向读者的产出
+  rewrite                 对已有文件执行风格改写
   agent-index             生成 Agent 检索索引（SKILL.md + CONTEXT.md）
   graph                   生成知识图谱可视化 HTML
 
@@ -32,6 +33,7 @@ js-knowledge-prism v${pkg.version}
   npx js-knowledge-prism status
   npx js-knowledge-prism new-perspective blog-post
   npx js-knowledge-prism output --perspective P01-xxx --template blog
+  npx js-knowledge-prism rewrite --style kzk-wechat --dir outputs/practice-diary/P23/
 `.trim();
 
 const args = process.argv.slice(2);
@@ -73,6 +75,11 @@ try {
     }
     case "output": {
       const { run } = await import("../lib/output.mjs");
+      await run(commandArgs);
+      break;
+    }
+    case "rewrite": {
+      const { run } = await import("../lib/rewrite.mjs");
       await run(commandArgs);
       break;
     }

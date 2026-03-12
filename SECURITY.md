@@ -68,6 +68,8 @@ The output engine (v1.6.0+) may create additional local-only work directories in
 | `_staging/<id>/` | Multi-stage pipeline intermediate outputs | No — markdown drafts from each pipeline stage |
 | `_reviews/` | LLM quality review reports | No — review scores and feedback text |
 | `_logs/` | Generation run logs (prompt lengths, timing) | No — metadata only, no full prompt or response content |
+| `_rewrites/<style>/` | Style-rewritten versions of output files | No — markdown content transformed by LLM |
+| `_rewrites/<style>/_reviews/` | Rewrite quality review reports (information retention checks) | No — review scores and feedback text |
 
 These directories are local to the knowledge base and contain only generated markdown text and run metadata.
 
@@ -79,6 +81,6 @@ If you discover a security issue, please open a GitHub issue or contact the main
 
 | Version | Supported |
 |---------|-----------|
+| 1.7.x   | Yes       |
 | 1.6.x   | Yes       |
-| 1.5.x   | Yes       |
-| < 1.5   | No        |
+| < 1.6   | No        |

@@ -111,6 +111,23 @@ npx js-knowledge-prism graph --open             # 生成后自动打开浏览器
 npx js-knowledge-prism new-perspective tutorial --name "入门教程"
 ```
 
+### `rewrite`
+
+对已有产出文件执行风格改写。改写结果写入 `_rewrites/<style>/` 子目录，不覆盖原文。
+
+```bash
+npx js-knowledge-prism rewrite --list-styles                          # 列出可用改写定义
+npx js-knowledge-prism rewrite --style kzk-wechat --file article.md   # 改写单个文件
+npx js-knowledge-prism rewrite --style kzk-wechat --dir outputs/P23/  # 批量改写目录
+npx js-knowledge-prism rewrite --style kzk-wechat --dir outputs/P23/ --review  # 改写+审校
+```
+
+也可以在 `output` 命令中直接链式调用：
+
+```bash
+npx js-knowledge-prism output --perspective P23 --template practice-diary --rewrite kzk-wechat
+```
+
 ## 配置（独立 CLI）
 
 `init` 命令会在知识棱镜根目录生成 `.knowledgeprism.json`（不含敏感信息）和 `.env.example` 模板：
@@ -196,7 +213,8 @@ openclaw prism init <dir> [--name <name>]
 openclaw prism process [--dry-run] [--auto-write] [--stage <n>] [--base-dir <dir>]
 openclaw prism status [--json] [--base-dir <dir>]
 openclaw prism new-perspective <slug> [--name <name>]
-openclaw prism output [--perspective <dir,...>] [--template <name>] [--skeleton] [--review] [--stage <name>] [--source <type>] [--groups <ids>] [--list-types]
+openclaw prism output [--perspective <dir,...>] [--template <name>] [--skeleton] [--review] [--rewrite <style>] [--stage <name>] [--source <type>] [--groups <ids>] [--list-types]
+openclaw prism rewrite --style <name> [--file <path>] [--dir <path>] [--review] [--list-styles]
 openclaw prism graph [--base-dir <dir>] [--output <path>] [--json] [--perspective <id>]
 openclaw prism register <dir>
 openclaw prism unregister <dir>
@@ -219,12 +237,14 @@ openclaw prism sync [--force]
 | `knowledge_prism_fill_perspective` | 生成 SCQA 或 Key Line 内容 |
 | `knowledge_prism_expand_kl` | 展开 Key Line 为完整论证文档 |
 | `knowledge_prism_output` | 从视角生成面向读者的产出（支持多粒度、多视角、审校、流水线） |
+| `knowledge_prism_rewrite` | 对已有产出执行风格改写（支持单文件和批量） |
 | `knowledge_prism_list_templates` | 列出可用的输出模板 |
 | `knowledge_prism_list_types` | 列出可用的产出类型定义 |
+| `knowledge_prism_list_rewrites` | 列出可用的改写定义 |
 | `knowledge_prism_register` | 注册知识库到自动处理列表 |
 | `knowledge_prism_list_registered` | 列出所有已注册知识库及状态 |
 | `knowledge_prism_process_all` | 批量处理所有已注册知识库，变更时自动通知 output inbox |
-| `knowledge_prism_bind_output` | 绑定视角+模板的自动产出配置（含 `klStrategy` 策略选项） |
+| `knowledge_prism_bind_output` | 绑定视角+模板的自动产出配置（含 `klStrategy` 策略选项和可选 `rewrites` 改写风格） |
 | `knowledge_prism_list_output_bindings` | 列出所有产出绑定及状态 |
 | `knowledge_prism_output_all` | Inbox/batch 轮转产出（崩溃恢复 + 失败重试 + 变化检测） |
 
@@ -240,12 +260,13 @@ openclaw prism sync [--force]
 
 ## 编程 API
 
-`lib/process.mjs`、`lib/status.mjs` 和 `lib/output.mjs` 导出了可编程接口，方便集成到其他系统：
+`lib/process.mjs`、`lib/status.mjs`、`lib/output.mjs` 和 `lib/rewrite.mjs` 导出了可编程接口，方便集成到其他系统：
 
 ```javascript
 import { createHttpCaller, runPipeline } from "js-knowledge-prism/lib/process.mjs";
 import { getStatus } from "js-knowledge-prism/lib/status.mjs";
 import { runOutput, listTemplates, listTypes } from "js-knowledge-prism/lib/output.mjs";
+import { runRewrite, runRewriteBatch, listRewrites } from "js-knowledge-prism/lib/rewrite.mjs";
 
 // 创建模型调用函数
 const callAgent = createHttpCaller({
@@ -273,6 +294,14 @@ await runOutput({
   review: true,
   callAgent,
 });
+
+// 风格改写
+await runRewrite({
+  inputPath: "/path/to/output-file.md",
+  rewriteName: "kzk-wechat",
+  baseDir: "/path/to/knowledge-base",
+  callAgent,
+});
 ```
 
 ## 扩展技能
@@ -283,6 +312,7 @@ await runOutput({
 |------|------|
 | `prism-output-blog` | 将视角转化为博客文章（注册 `prism_blog_generate` 等工具） |
 | `prism-template-author` | 引导创建新的产出模板（决策引导 + scaffold 工具 `prism_scaffold_template`） |
+| `prism-rewrite-author` | 引导创建新的改写定义（决策引导 + scaffold/import 工具 `prism_scaffold_rewrite`） |
 
 ## 要求
 

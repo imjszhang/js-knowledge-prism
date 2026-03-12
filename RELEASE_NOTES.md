@@ -1,16 +1,24 @@
-# Release Notes — v1.6.0
+# Release Notes — v1.7.0
 
-模块化产出引擎：Prompt 组件化、类型抽象、多粒度素材、质量审校、多阶段流水线和多源绑定。
+风格改写引擎：对已生成产出执行风格变换，支持独立 CLI / output 链式调用 / OpenClaw 插件自动化 / 创作引导技能。
 
 ## Highlights
 
-- **Prompt 组件化**：新增 `components/` 目录，通过 `{{@include path}}` 语法在模板间复用 persona、style、constraints 等片段，消除重复
-- **产出类型抽象**：新增 `types/` 目录，定义 `diary`、`blog` 等类型契约（读者画像、拆分粒度、质量标准），模板通过 `type: xxx` 继承默认配置
-- **多粒度素材注入**：`split` 策略从仅 `per-kl` 扩展为 `per-kl` / `per-perspective` / `per-group`，灵活匹配不同产出需求
-- **LLM 质量审校**：模板可声明 `# Review Prompt` 区段，`--review` 标志触发生成后自动审校，报告保存到 `_reviews/`
-- **多阶段流水线**：模板可声明 `stages`（如 outline → draft → polish），中间产物存储在 `_staging/`，支持 `pauseAfter` 人工审查和 `--stage` 断点续跑
-- **多源绑定**：支持多视角交叉（`--perspective P01,P02`）和直接从 analysis 生成（`--source analysis --groups G01,G02`），打破 1:1 视角-产出耦合
-- **OpenClaw 插件同步更新**：CLI 新增 `--review`、`--stage`、`--source`、`--groups`、`--list-types` 选项；AI 工具新增 `knowledge_prism_list_types`，`knowledge_prism_output` 扩展 `perspectives`、`source`、`review`、`stage` 参数
+- **独立改写引擎**：新增 `lib/rewrite.mjs`，实现 `loadRewrite`、`listRewrites`、`runRewrite`、`runRewriteBatch` 四个核心函数，与 output 引擎对称设计
+- **改写定义体系**：新增 `templates/outputs/rewrites/` 目录，改写定义使用 frontmatter + `# Rewrite Prompt` + 可选 `# Review Prompt` 结构，支持 `{{@include}}` 组件引用
+- **内置卡兹克风格**：首个内置改写定义 `kzk-wechat`，将技术文章改写为高传播力微信公众号风格（一句话一段、口语化、钩子开头、三连 CTA）
+- **CLI 集成**：
+  - 独立 `rewrite` 子命令：`--style`、`--file`/`--dir`、`--review`、`--list-styles`
+  - `output --rewrite <style>` 便捷参数：生成后自动链式改写
+- **OpenClaw 插件扩展**：
+  - 新增 AI 工具 `knowledge_prism_rewrite`（手动改写）和 `knowledge_prism_list_rewrites`（列出可用定义）
+  - `knowledge_prism_bind_output` 新增 `rewrites` 数组参数，绑定改写风格到产出配置
+  - `knowledge_prism_output_all` 生成后自动执行绑定的改写，支持 `lastRewriteAt` 时间戳
+  - `loadConfigBindings` / `mergeBindings` 支持 `.knowledgeprism.json` 中的 `rewrites` 字段
+  - CLI 新增 `openclaw prism rewrite` 子命令
+- **创作引导技能**：新增 `prism-rewrite-author` 技能，4 问决策引导 + `prism_scaffold_rewrite`（骨架生成）+ `prism_import_rewrite`（从已有提示词导入）
+- **智能上下文**：改写时自动从产出文件 frontmatter 的 `refs` 加载 journal/groups 原始素材作为 `{{source_context}}`（截取前 3000 字符）
+- **非破坏性输出**：改写结果写入 `_rewrites/<style>/` 子目录，不覆盖原文，支持多风格共存
 
 ## Breaking Changes
 
@@ -24,9 +32,25 @@ curl -fsSL https://raw.githubusercontent.com/user/js-knowledge-prism/main/instal
 
 ## What's Next
 
-- Hub 页面内嵌实时生成按钮（无需手动运行 CLI）
-- 图谱快照导出（PNG / SVG）
-- 更多内置类型和组件（tutorial、changelog 等）
+- 更多内置改写定义（知乎、Twitter 线程等）
+- 改写 A/B 对比工具
+- Hub 页面内嵌实时生成按钮
+
+---
+
+<details>
+<summary>v1.6.0</summary>
+
+模块化产出引擎：Prompt 组件化、类型抽象、多粒度素材、质量审校、多阶段流水线和多源绑定。
+
+- **Prompt 组件化**：新增 `components/` 目录，通过 `{{@include path}}` 语法在模板间复用 persona、style、constraints 等片段
+- **产出类型抽象**：新增 `types/` 目录，定义 `diary`、`blog` 等类型契约，模板通过 `type: xxx` 继承默认配置
+- **多粒度素材注入**：`split` 策略扩展为 `per-kl` / `per-perspective` / `per-group`
+- **LLM 质量审校**：`# Review Prompt` 区段 + `--review` 标志
+- **多阶段流水线**：`stages` 声明 + `_staging/` 中间产物 + `--stage` 断点续跑
+- **多源绑定**：多视角交叉 + 直接从 analysis 生成
+
+</details>
 
 ---
 

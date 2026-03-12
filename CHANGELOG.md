@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] - 2026-03-12
+
+### Added
+
+- **风格改写引擎 `lib/rewrite.mjs`**：独立于 output 的后处理模块
+  - `loadRewrite(name, baseDir)`：加载改写定义（本地 `_templates/rewrites/` > 内置 `rewrites/`）
+  - `listRewrites(baseDir)`：列出所有可用改写定义
+  - `runRewrite(opts)`：对单个文件执行改写，自动从 frontmatter refs 加载 source_context
+  - `runRewriteBatch(opts)`：批量改写目录下所有 .md 文件
+- **改写定义资源 `templates/outputs/rewrites/`**：新增改写定义目录，与 prompts/components/types 平级
+  - frontmatter 字段：`name`、`description`、`platform`、`preserveStructure`、`preserveLinks`、`preserveFrontmatter`
+  - `# Rewrite Prompt` + 可选 `# Review Prompt` 区段，支持 `{{@include}}` 组件引用
+- **内置改写定义 `kzk-wechat`**：微信公众号卡兹克风格（口语化、一句话一段、钩子开头、三连 CTA、信息保留度审校）
+- **CLI `rewrite` 子命令**：`bin/cli.mjs` 新增 rewrite 分发，支持 `--style`、`--file`/`--dir`、`--review`、`--dry-run`、`--list-styles`
+- **`output --rewrite <style>`**：output 命令新增便捷参数，生成后自动链式改写新产出
+- **OpenClaw 插件 AI 工具**：
+  - `knowledge_prism_rewrite`：手动对指定文件或目录执行改写，支持 perspectiveDir+template 自动定位
+  - `knowledge_prism_list_rewrites`：列出可用改写定义（内置和自定义）
+- **`knowledge_prism_bind_output` 扩展**：新增 `rewrites` 数组参数，绑定改写风格到产出配置；验证每个 rewrite name 对应的定义存在
+- **`knowledge_prism_list_output_bindings` 扩展**：输出中显示 `rewrites` 配置和 `lastRewriteAt` 时间戳
+- **`knowledge_prism_output_all` 扩展**：生成后自动对 binding.rewrites 中的风格执行改写（batch path 和 mtime fallback path 均支持）
+- **`loadConfigBindings` / `mergeBindings` 扩展**：支持 `.knowledgeprism.json` 中 `output.bindings[].rewrites` 字段
+- **OpenClaw CLI `prism rewrite`**：新增 rewrite 子命令（`--style`、`--file`/`--dir`、`--review`、`--list-styles`）
+- **`prism-rewrite-author` 技能**：新增 `skills/prism-rewrite-author/` 目录
+  - `SKILL.md`：4 问决策引导（平台、语气、结构改造、审校）+ Scaffold → Fill → Verify 工作流
+  - `prism_scaffold_rewrite` AI 工具：生成改写定义骨架文件到 `_templates/rewrites/`
+  - `prism_import_rewrite` AI 工具：从已有提示词文件自动转换为标准改写定义格式
+
+### Changed
+
+- `templates/outputs/README.md` 架构图、目录结构、查找优先级表、CLI 参考均更新，新增"改写（Rewrites）"核心概念章节
+- `skills/prism-template-author/schema-reference.md` 新增 Rewrite 定义 Schema（frontmatter 字段表、变量表、区段规范）
+- `README.md` 新增 `rewrite` CLI 命令、编程 API、AI 工具表和扩展技能表条目
+
 ## [1.4.0] - 2026-03-11
 
 ### Changed

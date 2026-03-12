@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createHttpCaller, runPipeline } from "../lib/process.mjs";
 import { getStatus } from "../lib/status.mjs";
 import { listTemplates, listTypes, loadTemplate, loadType, runOutput } from "../lib/output.mjs";
+import { listRewrites, loadRewrite, runRewrite, runRewriteBatch } from "../lib/rewrite.mjs";
 import { makePaths, listPerspectiveDirs, parseKeyLineTable } from "../lib/utils.mjs";
 import { extractGraph, analyzeGraph, generateGraphHtml, filterByPerspective } from "../lib/graph.mjs";
 
@@ -219,6 +220,7 @@ export default function register(api) {
           template: b.template,
           klStrategy: b.klStrategy || "synthesis",
           enabled: b.enabled ?? true,
+          rewrites: b.rewrites || [],
         }));
     } catch {
       return [];
@@ -238,7 +240,10 @@ export default function register(api) {
         const existing = merged.find(
           (b) => b.perspectiveDir === cb.perspectiveDir && b.template === cb.template,
         );
-        if (existing && cb.klStrategy) existing.klStrategy = cb.klStrategy;
+        if (existing) {
+          if (cb.klStrategy) existing.klStrategy = cb.klStrategy;
+          if (cb.rewrites?.length) existing.rewrites = cb.rewrites;
+        }
       } else {
         merged.push({
           ...cb,
@@ -871,6 +876,84 @@ export default function register(api) {
           } catch (err) {
             console.error(`  配置失败: ${err.message}`);
             if (err.stderr) console.error(err.stderr);
+          }
+        });
+
+      // --- prism rewrite ---
+      prism
+        .command("rewrite")
+        .description("对已有产出文件执行风格改写")
+        .option("--style <name>", "改写风格名")
+        .option("--file <path>", "改写单个文件")
+        .option("--dir <path>", "批量改写目录下所有 .md 文件")
+        .option("--output-dir <dir>", "自定义输出目录")
+        .option("--force", "覆盖已存在的改写结果")
+        .option("--review", "改写后审校")
+        .option("--dry-run", "只预览，不调用模型")
+        .option("--list-styles", "列出可用改写定义")
+        .action(async (opts) => {
+          const baseDir = resolveBaseDir();
+
+          if (opts.listStyles) {
+            const rewrites = listRewrites(baseDir);
+            if (rewrites.length === 0) {
+              console.log("没有可用的改写定义。");
+              return;
+            }
+            console.log("\n可用改写定义:\n");
+            for (const r of rewrites) {
+              const def = loadRewrite(r.name, baseDir);
+              console.log(`  ${r.name} (${r.source})`);
+              if (def?.description) console.log(`    ${def.description}`);
+              if (def?.platform) console.log(`    平台: ${def.platform}`);
+              console.log();
+            }
+            return;
+          }
+
+          if (!opts.style) {
+            console.error("  错误: 必须指定 --style（或使用 --list-styles）");
+            return;
+          }
+          if (!opts.file && !opts.dir) {
+            console.error("  错误: 必须指定 --file 或 --dir");
+            return;
+          }
+
+          const callAgent = buildCallAgent();
+
+          if (opts.file) {
+            const inputPath = resolve(opts.file);
+            const result = await runRewrite({
+              inputPath,
+              rewriteName: opts.style,
+              baseDir,
+              callAgent,
+              outputDir: opts.outputDir,
+              force: !!opts.force,
+              review: !!opts.review,
+              dryRun: !!opts.dryRun,
+            });
+            if (result.status === "error") {
+              console.error(`  错误: ${result.error}`);
+            } else {
+              console.log(`  ${result.status}: ${result.file}`);
+            }
+            return;
+          }
+
+          if (opts.dir) {
+            const inputDir = resolve(opts.dir);
+            await runRewriteBatch({
+              inputDir,
+              rewriteName: opts.style,
+              baseDir,
+              callAgent,
+              outputDir: opts.outputDir,
+              force: !!opts.force,
+              review: !!opts.review,
+              dryRun: !!opts.dryRun,
+            });
           }
         });
 
@@ -1860,6 +1943,160 @@ export default function register(api) {
   );
 
   // ---------------------------------------------------------------------------
+  // AI Tools: knowledge_prism_rewrite / list_rewrites
+  // ---------------------------------------------------------------------------
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_rewrite",
+      label: "Knowledge Prism: Rewrite",
+      description:
+        "对已有产出文件执行风格改写。可改写单个文件或整个目录。" +
+        "改写结果写入 _rewrites/<style>/ 子目录，不覆盖原文。" +
+        "支持自动从 frontmatter refs 加载补充素材上下文。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录。省略则使用插件配置。",
+          },
+          style: {
+            type: "string",
+            description: "改写风格名（如 kzk-wechat）",
+          },
+          file: {
+            type: "string",
+            description: "改写单个文件路径（与 dir 二选一）",
+          },
+          dir: {
+            type: "string",
+            description: "批量改写目录路径（与 file 二选一）",
+          },
+          perspectiveDir: {
+            type: "string",
+            description: "视角目录名（配合 template 自动定位产出目录）",
+          },
+          template: {
+            type: "string",
+            description: "模板名（配合 perspectiveDir 自动定位产出目录）",
+          },
+          force: {
+            type: "boolean",
+            description: "覆盖已存在的改写结果。默认 false。",
+          },
+          review: {
+            type: "boolean",
+            description: "改写后执行信息保留度审校。默认 false。",
+          },
+          dryRun: {
+            type: "boolean",
+            description: "只预览，不调用模型。默认 false。",
+          },
+        },
+        required: ["style"],
+      },
+      async execute(_toolCallId, params) {
+        const baseDir = params.baseDir || resolveBaseDir();
+        const absDir = resolve(baseDir);
+
+        const rewriteDef = loadRewrite(params.style, absDir);
+        if (!rewriteDef) {
+          const available = listRewrites(absDir).map((r) => r.name);
+          return textResult(
+            `错误: 改写定义 "${params.style}" 未找到。可用: ${available.join(", ") || "无"}`,
+          );
+        }
+
+        const callAgent = buildCallAgent();
+        const force = params.force ?? false;
+        const review = params.review ?? false;
+        const dryRun = params.dryRun ?? false;
+
+        if (params.file) {
+          const inputPath = resolve(params.file);
+          const result = await runRewrite({
+            inputPath,
+            rewriteName: params.style,
+            baseDir: absDir,
+            callAgent,
+            force,
+            review,
+            dryRun,
+          });
+          if (result.status === "error") {
+            return textResult(`错误: ${result.error}`);
+          }
+          return textResult(`${result.status}: ${result.file}${result.outputPath ? ` → ${result.outputPath}` : ""}`);
+        }
+
+        let inputDir;
+        if (params.dir) {
+          inputDir = resolve(params.dir);
+        } else if (params.perspectiveDir && params.template) {
+          const paths = makePaths(absDir);
+          inputDir = join(paths.outputsDir, params.template, params.perspectiveDir);
+        } else {
+          return textResult("错误: 必须指定 file、dir、或 perspectiveDir+template 之一。");
+        }
+
+        if (!existsSync(inputDir)) {
+          return textResult(`错误: 目录不存在: ${inputDir}`);
+        }
+
+        const result = await runRewriteBatch({
+          inputDir,
+          rewriteName: params.style,
+          baseDir: absDir,
+          callAgent,
+          force,
+          review,
+          dryRun,
+        });
+
+        return textResult(result.message);
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "knowledge_prism_list_rewrites",
+      label: "Knowledge Prism: List Rewrites",
+      description: "列出可用的改写定义（内置和知识库自定义）。",
+      parameters: {
+        type: "object",
+        properties: {
+          baseDir: {
+            type: "string",
+            description: "知识库根目录。省略则使用插件配置。",
+          },
+        },
+      },
+      async execute(_toolCallId, params) {
+        const baseDir = params.baseDir || resolveBaseDir();
+        const absDir = resolve(baseDir);
+        const rewrites = listRewrites(absDir);
+
+        if (rewrites.length === 0) {
+          return textResult("没有可用的改写定义。");
+        }
+
+        const lines = ["可用改写定义:", ""];
+        for (const r of rewrites) {
+          const def = loadRewrite(r.name, absDir);
+          lines.push(`- ${r.name} (${r.source})`);
+          if (def?.description) lines.push(`  ${def.description}`);
+          if (def?.platform) lines.push(`  平台: ${def.platform}`);
+        }
+        return textResult(lines.join("\n"));
+      },
+    },
+    { optional: true },
+  );
+
+  // ---------------------------------------------------------------------------
   // AI Tools: knowledge_prism_bind_output / list_output_bindings / output_all
   // ---------------------------------------------------------------------------
 
@@ -1897,6 +2134,11 @@ export default function register(api) {
               "structure 刷新策略。synthesis=全量重生成 SCQA+KL+expand（默认）；" +
               "date-driven=仅追加新日期的 KL（适合日记/日志型视角）；manual=不自动刷新。",
           },
+          rewrites: {
+            type: "array",
+            items: { type: "string" },
+            description: "绑定的改写风格名列表（如 [\"kzk-wechat\"]）。产出生成后自动执行改写。",
+          },
         },
         required: ["perspectiveDir", "template"],
       },
@@ -1929,6 +2171,16 @@ export default function register(api) {
           );
         }
 
+        const rewriteNames = params.rewrites || [];
+        for (const rn of rewriteNames) {
+          if (!loadRewrite(rn, absDir)) {
+            const available = listRewrites(absDir).map((r) => r.name);
+            return textResult(
+              `错误: 改写定义 "${rn}" 未找到。可用: ${available.join(", ") || "无"}`,
+            );
+          }
+        }
+
         const base = registry.bases[idx];
         if (!base.outputBindings) base.outputBindings = [];
 
@@ -1950,9 +2202,11 @@ export default function register(api) {
         if (existing) {
           existing.enabled = enabled;
           existing.klStrategy = klStrategy;
+          if (rewriteNames.length > 0) existing.rewrites = rewriteNames;
           saveRegistry(registry);
+          const rewriteHint = rewriteNames.length > 0 ? `, rewrites=[${rewriteNames.join(", ")}]` : "";
           return textResult(
-            `已更新绑定: ${params.perspectiveDir} + ${params.template} → enabled=${enabled}, klStrategy=${klStrategy}${configHint}`,
+            `已更新绑定: ${params.perspectiveDir} + ${params.template} → enabled=${enabled}, klStrategy=${klStrategy}${rewriteHint}${configHint}`,
           );
         }
 
@@ -1961,13 +2215,16 @@ export default function register(api) {
           template: params.template,
           enabled,
           klStrategy,
+          rewrites: rewriteNames.length > 0 ? rewriteNames : undefined,
           lastStructureRefreshAt: null,
           lastOutputAt: null,
           lastOutputSummary: null,
+          lastRewriteAt: null,
         });
         saveRegistry(registry);
+        const rewriteHint = rewriteNames.length > 0 ? `, rewrites=[${rewriteNames.join(", ")}]` : "";
         return textResult(
-          `已绑定: ${base.name} — ${params.perspectiveDir} + ${params.template} (klStrategy=${klStrategy})${configHint}`,
+          `已绑定: ${base.name} — ${params.perspectiveDir} + ${params.template} (klStrategy=${klStrategy}${rewriteHint})${configHint}`,
         );
       },
     },
@@ -2028,8 +2285,10 @@ export default function register(api) {
               const lastRefresh = b.lastStructureRefreshAt
                 ? b.lastStructureRefreshAt.replace("T", " ").slice(0, 16)
                 : "从未";
-              lines.push(`  - ${b.perspectiveDir} + ${b.template} [${flag}] [klStrategy: ${strategy}]${source}`);
+              const rewriteInfo = b.rewrites?.length ? ` [rewrites: ${b.rewrites.join(", ")}]` : "";
+              lines.push(`  - ${b.perspectiveDir} + ${b.template} [${flag}] [klStrategy: ${strategy}]${rewriteInfo}${source}`);
               lines.push(`    上次 structure 刷新: ${lastRefresh} | 上次产出: ${lastTs}`);
+              if (b.lastRewriteAt) lines.push(`    上次改写: ${b.lastRewriteAt.replace("T", " ").slice(0, 16)}`);
               if (b.lastOutputSummary) lines.push(`    摘要: ${b.lastOutputSummary}`);
             }
           }
@@ -2411,11 +2670,41 @@ export default function register(api) {
               binding.lastOutputSummary = `生成: ${genCount}` + (errCount ? `, 失败: ${errCount}` : "");
             }
 
+            let rewriteCount = 0;
+            const bindingRewrites = binding.rewrites || [];
+            if (genCount > 0 && bindingRewrites.length > 0 && outputResult.results && !dryRun) {
+              const generatedFiles = outputResult.results.filter((r) => r.status === "generated" && r.file);
+              const paths = makePaths(base.baseDir);
+              const outputDir = join(paths.outputsDir, item.template, item.perspectiveDir);
+              for (const style of bindingRewrites) {
+                for (const gf of generatedFiles) {
+                  const inputPath = join(outputDir, gf.file);
+                  if (!existsSync(inputPath)) continue;
+                  try {
+                    const rr = await runRewrite({
+                      inputPath,
+                      rewriteName: style,
+                      baseDir: base.baseDir,
+                      callAgent,
+                      force,
+                      log: (msg) => api.logger.info(`[${base.name}] ${msg}`),
+                      warn: (msg) => api.logger.warn(`[${base.name}] ${msg}`),
+                    });
+                    if (rr.status === "rewritten") rewriteCount++;
+                  } catch (e) {
+                    api.logger.warn(`[${base.name}] 改写失败 (${gf.file}, ${style}): ${e.message}`);
+                  }
+                }
+              }
+              if (rewriteCount > 0) binding.lastRewriteAt = new Date().toISOString();
+            }
+
             const entry = { name: base.name, binding: `${item.perspectiveDir} + ${item.template}` };
             if (genCount > 0 || errCount === 0) {
               entry.status = "generated";
               entry.message = `${outputResult.message || ""}` +
-                (genCount ? ` (生成: ${genCount}` + (errCount ? `, 失败: ${errCount})` : ")") : "");
+                (genCount ? ` (生成: ${genCount}` + (errCount ? `, 失败: ${errCount})` : ")") : "") +
+                (rewriteCount > 0 ? `, 改写: ${rewriteCount}` : "");
             } else {
               entry.status = "error";
               entry.message = `全部失败 (${errCount} 个)`;
@@ -2645,10 +2934,40 @@ export default function register(api) {
                     }
                   }
                 }
+                let rewriteCount = 0;
+                const bindingRewrites = binding.rewrites || [];
+                if (genCount > 0 && bindingRewrites.length > 0 && result.results) {
+                  const generatedFiles = result.results.filter((r) => r.status === "generated" && r.file);
+                  const paths = makePaths(base.baseDir);
+                  const outputDir = join(paths.outputsDir, binding.template, binding.perspectiveDir);
+                  for (const style of bindingRewrites) {
+                    for (const gf of generatedFiles) {
+                      const inputPath = join(outputDir, gf.file);
+                      if (!existsSync(inputPath)) continue;
+                      try {
+                        const rr = await runRewrite({
+                          inputPath,
+                          rewriteName: style,
+                          baseDir: base.baseDir,
+                          callAgent,
+                          force,
+                          log: (msg) => api.logger.info(`[${base.name}] ${msg}`),
+                          warn: (msg) => api.logger.warn(`[${base.name}] ${msg}`),
+                        });
+                        if (rr.status === "rewritten") rewriteCount++;
+                      } catch (e) {
+                        api.logger.warn(`[${base.name}] 改写失败 (${gf.file}, ${style}): ${e.message}`);
+                      }
+                    }
+                  }
+                  if (rewriteCount > 0) binding.lastRewriteAt = new Date().toISOString();
+                }
+
                 entry.status = "generated";
                 entry.message =
                   `${result.message}` +
-                  (genCount ? ` (生成: ${genCount}` + (errCount ? `, 失败: ${errCount})` : ")") : "");
+                  (genCount ? ` (生成: ${genCount}` + (errCount ? `, 失败: ${errCount})` : ")") : "") +
+                  (rewriteCount > 0 ? `, 改写: ${rewriteCount}` : "");
                 binding.lastOutputAt = new Date().toISOString();
                 binding.lastOutputSummary = entry.message;
               } else {
