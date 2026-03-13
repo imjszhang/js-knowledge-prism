@@ -184,3 +184,11 @@ Review Prompt 固定结构，基于以下维度：
 - [ ] `preserveStructure` 是否与风格匹配（破坏式改写 = false，润色式改写 = true）
 - [ ] Review Prompt 的"风格一致性"维度是否引用了 Rewrite Prompt 的核心特征名
 - [ ] 文件是否保存到了正确的知识库目录（不是工具项目目录）
+
+---
+
+## 参考资料
+
+- Rewrite 定义 Schema（frontmatter 字段、变量表、区段规范）→ `openclaw-plugin/skills/prism-template-author/schema-reference.md`（末尾 Rewrite 章节）
+- 脚手架文件 → `templates/outputs/rewrites/_scaffold.md`
+- 产出引擎架构 → `templates/outputs/README.md`

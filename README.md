@@ -116,16 +116,16 @@ npx js-knowledge-prism new-perspective tutorial --name "入门教程"
 对已有产出文件执行风格改写。改写结果写入 `_rewrites/<style>/` 子目录，不覆盖原文。
 
 ```bash
-npx js-knowledge-prism rewrite --list-styles                          # 列出可用改写定义
-npx js-knowledge-prism rewrite --style kzk-wechat --file article.md   # 改写单个文件
-npx js-knowledge-prism rewrite --style kzk-wechat --dir outputs/P23/  # 批量改写目录
-npx js-knowledge-prism rewrite --style kzk-wechat --dir outputs/P23/ --review  # 改写+审校
+npx js-knowledge-prism rewrite --list-styles                           # 列出可用改写定义
+npx js-knowledge-prism rewrite --style <name> --file article.md        # 改写单个文件
+npx js-knowledge-prism rewrite --style <name> --dir outputs/P25/       # 批量改写目录
+npx js-knowledge-prism rewrite --style <name> --dir outputs/P25/ --review  # 改写+审校
 ```
 
 也可以在 `output` 命令中直接链式调用：
 
 ```bash
-npx js-knowledge-prism output --perspective P23 --template practice-diary --rewrite kzk-wechat
+npx js-knowledge-prism output --perspective P25 --template <name> --rewrite <style>
 ```
 
 ## 配置（独立 CLI）
@@ -289,30 +289,32 @@ const status = getStatus("/path/to/knowledge-base");
 // 生成产出（支持多粒度、多源、审校、流水线）
 await runOutput({
   baseDir: "/path/to/knowledge-base",
-  perspectiveDir: "P01-xxx",
-  template: "practice-diary",
+  perspectiveDir: "P25-yangxia-series",
+  template: "yangxia-series",
   review: true,
   callAgent,
 });
 
-// 风格改写
+// 风格改写（改写定义需先通过 prism-rewrite-author 技能创建）
 await runRewrite({
   inputPath: "/path/to/output-file.md",
-  rewriteName: "kzk-wechat",
+  rewriteName: "my-style",
   baseDir: "/path/to/knowledge-base",
   callAgent,
 });
 ```
 
-## 扩展技能
+## 技能
 
-`skills/` 目录下提供可选的扩展技能，为 OpenClaw Agent 增加专项能力：
+内置技能（`openclaw-plugin/skills/`）和可安装扩展技能：
 
-| 技能 | 说明 |
-|------|------|
-| `prism-output-blog` | 将视角转化为博客文章（注册 `prism_blog_generate` 等工具） |
-| `prism-template-author` | 引导创建新的产出模板（决策引导 + scaffold 工具 `prism_scaffold_template`） |
-| `prism-rewrite-author` | 引导创建新的改写定义（决策引导 + scaffold/import 工具 `prism_scaffold_rewrite`） |
+| 技能 | 内置 | 说明 |
+|------|------|------|
+| `prism-template-author` | 是 | 引导创建产出模板（人设→风格→类型→模板四层脚手架 + 决策引导） |
+| `prism-rewrite-author` | 是 | 引导创建改写定义（脚手架 + 从参考文章提炼风格） |
+| `prism-output-blog` | 扩展 | 将视角转化为博客文章 |
+
+> 工具不内置任何内容特定的模板。所有模板、类型、组件和改写定义由技能引导创建，保存在知识库的 `outputs/_templates/` 目录下。
 
 ## 要求
 

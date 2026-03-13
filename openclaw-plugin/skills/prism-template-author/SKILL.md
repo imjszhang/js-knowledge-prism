@@ -317,3 +317,11 @@ Unit Prompt 的核心是**生成指令**——告诉 LLM 怎么使用注入的�
 - [ ] Skeleton Template 的结构是否与输出格式一致
 - [ ] Review Prompt 的额外维度是否针对模板特殊需求
 - [ ] 模板文件是否保存到知识库的 `_templates/` 下（不是工具项目）
+
+---
+
+## 参考资料
+
+- 完整的 frontmatter 字段、变量表、区段规范 → [schema-reference.md](schema-reference.md)
+- 产出引擎架构 → `templates/outputs/README.md`
+- 脚手架文件 → `templates/outputs/` 下的 `_scaffold.md` 文件

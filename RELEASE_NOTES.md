@@ -1,28 +1,23 @@
-# Release Notes — v1.7.0
+# Release Notes — v1.8.0
 
-风格改写引擎：对已生成产出执行风格变换，支持独立 CLI / output 链式调用 / OpenClaw 插件自动化 / 创作引导技能。
+模板架构重构：从"内置模板"转向"脚手架 + 技能引导"，工具只提供创建能力，具体模板由知识库决定。
 
 ## Highlights
 
-- **独立改写引擎**：新增 `lib/rewrite.mjs`，实现 `loadRewrite`、`listRewrites`、`runRewrite`、`runRewriteBatch` 四个核心函数，与 output 引擎对称设计
-- **改写定义体系**：新增 `templates/outputs/rewrites/` 目录，改写定义使用 frontmatter + `# Rewrite Prompt` + 可选 `# Review Prompt` 结构，支持 `{{@include}}` 组件引用
-- **内置卡兹克风格**：首个内置改写定义 `kzk-wechat`，将技术文章改写为高传播力微信公众号风格（一句话一段、口语化、钩子开头、三连 CTA）
-- **CLI 集成**：
-  - 独立 `rewrite` 子命令：`--style`、`--file`/`--dir`、`--review`、`--list-styles`
-  - `output --rewrite <style>` 便捷参数：生成后自动链式改写
-- **OpenClaw 插件扩展**：
-  - 新增 AI 工具 `knowledge_prism_rewrite`（手动改写）和 `knowledge_prism_list_rewrites`（列出可用定义）
-  - `knowledge_prism_bind_output` 新增 `rewrites` 数组参数，绑定改写风格到产出配置
-  - `knowledge_prism_output_all` 生成后自动执行绑定的改写，支持 `lastRewriteAt` 时间戳
-  - `loadConfigBindings` / `mergeBindings` 支持 `.knowledgeprism.json` 中的 `rewrites` 字段
-  - CLI 新增 `openclaw prism rewrite` 子命令
-- **创作引导技能**：新增 `prism-rewrite-author` 技能，4 问决策引导 + `prism_scaffold_rewrite`（骨架生成）+ `prism_import_rewrite`（从已有提示词导入）
-- **智能上下文**：改写时自动从产出文件 frontmatter 的 `refs` 加载 journal/groups 原始素材作为 `{{source_context}}`（截取前 3000 字符）
-- **非破坏性输出**：改写结果写入 `_rewrites/<style>/` 子目录，不覆盖原文，支持多风格共存
+- **模板架构重构**：移除所有内置内容模板（persona/blogger、style/narrative、types/diary、types/blog、prompts/practice-diary、rewrites/kzk-wechat），替换为 `_scaffold.md` 脚手架文件
+- **设计原则**：工具提供"怎么造模板"的能力，知识库存放"具体的模板"。所有模板、类型、组件和改写定义保存在知识库的 `outputs/_templates/` 目录下
+- **内置创作技能**：
+  - `prism-template-author`：引导创建 output 模板——人设→风格→类型→模板四层体系，含需求采集、风格提炼（支持从参考文章分析）、脚手架填充、质量检查
+  - `prism-rewrite-author`：引导创建改写定义——风格采集、规则提炼、脚手架填充
+- **保留通用基础设施**：`constraints.md`（全局硬性约束）和 `review/base.md`（通用审校标准）作为任何模板都需要的基础组件保留在工具中
+- **脚手架过滤**：`listTemplates`、`listTypes`、`listRewrites` 自动过滤 `_` 开头的脚手架文件，不会出现在可用列表中
+- **`--force` 备份机制**：output 生成时使用 `--force` 覆盖已有文件前，自动备份到 `_backups/` 目录
+- **frontmatter 保留**：`--force` 重新生成时保留已有文件的 YAML frontmatter 元数据
 
 ## Breaking Changes
 
-无。所有新功能均为 opt-in，现有调用方式完全兼容。
+- 移除了所有内置模板。升级后 `--list-templates` 只显示知识库中用户自建的模板
+- 如果之前依赖内置 `practice-diary` 模板，需要在知识库 `outputs/_templates/` 中创建对应模板
 
 ## Install
 
@@ -32,9 +27,26 @@ curl -fsSL https://raw.githubusercontent.com/user/js-knowledge-prism/main/instal
 
 ## What's Next
 
-- 更多内置改写定义（知乎、Twitter 线程等）
 - 改写 A/B 对比工具
 - Hub 页面内嵌实时生成按钮
+- 技能市场：社区共享的模板和改写定义
+
+---
+
+<details>
+<summary>v1.7.0</summary>
+
+风格改写引擎：对已生成产出执行风格变换，支持独立 CLI / output 链式调用 / OpenClaw 插件自动化。
+
+- **独立改写引擎**：`lib/rewrite.mjs`，实现 `loadRewrite`、`listRewrites`、`runRewrite`、`runRewriteBatch`
+- **改写定义体系**：frontmatter + `# Rewrite Prompt` + 可选 `# Review Prompt`，支持 `{{@include}}` 组件引用
+- **CLI 集成**：独立 `rewrite` 子命令 + `output --rewrite <style>` 便捷参数
+- **OpenClaw 插件**：新增 AI 工具 `knowledge_prism_rewrite`、`knowledge_prism_list_rewrites`
+- **绑定改写**：`knowledge_prism_bind_output` 新增 `rewrites` 参数，`output_all` 自动执行绑定改写
+- **智能上下文**：改写时自动从 frontmatter refs 加载原始素材
+- **非破坏性输出**：改写结果写入 `_rewrites/<style>/` 子目录
+
+</details>
 
 ---
 

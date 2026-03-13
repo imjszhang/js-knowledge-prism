@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.0] - 2026-03-13
+
+### Changed
+
+- **模板架构重构：脚手架 + 技能引导**：移除所有内置内容模板，工具不再包含任何特定风格/类型/人设的模板文件
+  - 移除 `templates/outputs/components/persona/blogger.md`、`style/narrative.md`
+  - 移除 `templates/outputs/types/diary.md`、`blog.md`
+  - 移除 `templates/outputs/prompts/practice-diary.md`
+  - 移除 `templates/outputs/rewrites/kzk-wechat.md`（迁移到知识库 `outputs/_templates/rewrites/`）
+  - 上述文件替换为 `_scaffold.md` 脚手架，供技能引导填充
+- `listTemplates`、`listTypes`、`listRewrites` 自动过滤 `_` 开头的脚手架文件
+- `templates/outputs/README.md` 更新目录结构和模板查找说明，反映"脚手架 + 技能"架构
+- SKILL.md Extension Skills 章节区分"内置"和"扩展"技能
+
+### Added
+
+- **`prism-template-author` 内置技能**：`openclaw-plugin/skills/prism-template-author/SKILL.md`，引导创建 persona→style→type→prompt 四层模板体系，含风格提炼、迭代优化和质量检查清单
+- **`prism-rewrite-author` 内置技能**：`openclaw-plugin/skills/prism-rewrite-author/SKILL.md`，引导创建改写定义，支持从参考文章提炼风格规则
+- 五个脚手架文件：`persona/_scaffold.md`、`style/_scaffold.md`、`types/_scaffold.md`、`prompts/_scaffold.md`、`rewrites/_scaffold.md`
+
+### Retained
+
+- `templates/outputs/components/constraints.md`（全局硬性约束）和 `review/base.md`（通用审校标准）作为通用基础设施保留
+
 ## [1.7.0] - 2026-03-12
 
 ### Added

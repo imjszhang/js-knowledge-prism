@@ -1,6 +1,0 @@
-{
-  "name": "prism-rewrite-author",
-  "version": "1.0.0",
-  "description": "Rewrite definition authoring skill for JS Knowledge Prism — scaffold, import, and guide rewrite creation",
-  "type": "module"
-}

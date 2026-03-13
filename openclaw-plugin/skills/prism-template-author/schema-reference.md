@@ -182,45 +182,24 @@ LLM 的系统提示。定义角色、风格、约束和输出格式。
 - 使用 `{{prev_stage_output}}` 引用上阶段结果
 - 首阶段通常是"生成大纲"，末阶段是"润色定稿"
 
-## 内置组件清单
+## 内置基础组件
+
+工具仅保留通用基础设施组件，具体的 persona/style 组件由 `prism-template-author` 技能引导创建，存放在知识库 `outputs/_templates/components/` 下。
 
 | 路径 | 用途 |
 |------|------|
 | `constraints.md` | 全局硬性约束（不编造、精确链接、直接输出 Markdown） |
-| `persona/blogger.md` | 技术博主人设（有经验的开发者写给同行的实战复盘） |
-| `style/narrative.md` | 叙事驱动风格（第一人称、口语化、按事件顺序展开） |
 | `review/base.md` | 通用审校标准（素材忠实度、覆盖度、链接、风格、结构五维评分） |
+| `persona/_scaffold.md` | 人设组件脚手架 |
+| `style/_scaffold.md` | 风格组件脚手架 |
 
-知识库可在 `outputs/_templates/components/` 下放置本地组件，优先于内置组件。
+## 类型与模板
 
-## 内置类型清单
+工具不内置任何类型定义或模板文件。使用 `prism-template-author` 技能创建，存放在知识库 `outputs/_templates/` 下。
 
-### diary
-
-- 读者画像：同行开发者
-- 拆分：per-kl
-- 命名：date
-- 必需变量：kl_id, kl_thesis, kl_date, kl_content, journal_content, groups_content
-- 可选变量：scqa_content, support_points
-- 质量标准：素材忠实、叙事连贯、详略得当、链接正确
-
-### blog
-
-- 读者画像：技术社区读者
-- 拆分：per-perspective
-- 命名：slug
-- 必需变量：perspective_thesis, scqa_content, all_kl_summaries, all_groups_content
-- 可选变量：perspective_dir, perspective_id
-- 质量标准：独立可读、观点明确、证据充分、结构完整
-
-## 范例模板
-
-完整范例参见 `templates/outputs/prompts/practice-diary.md`，展示了：
-- frontmatter 关联 type
-- System Prompt 组合多个组件 + 输出格式定义
-- Unit Prompt 按 per-kl 变量注入素材 + 写作指令
-- Skeleton Template 使用骨架专用变量
-- Review Prompt 引入审校组件 + 生成内容/源素材变量
+脚手架文件：
+- `types/_scaffold.md` — 类型定义脚手架
+- `prompts/_scaffold.md` — 模板文件脚手架
 
 ---
 
@@ -265,12 +244,8 @@ LLM 的系统提示。定义角色、风格、约束和输出格式。
 
 改写后的信息保留度审校。使用 `{{rewritten_content}}` 和 `{{article_content}}`。运行时加 `--review` 触发。
 
-### 内置改写定义清单
+### 改写定义
 
-| 名称 | 平台 | 说明 |
-|------|------|------|
-| `kzk-wechat` | wechat | 微信公众号卡兹克风格（口语化、一句话一段、钩子开头、三连 CTA） |
+工具不内置任何改写定义。使用 `prism-rewrite-author` 技能创建，存放在知识库 `outputs/_templates/rewrites/` 下。
 
-### 范例改写定义
-
-完整范例参见 `templates/outputs/rewrites/kzk-wechat.md`。
+脚手架文件：`rewrites/_scaffold.md`。

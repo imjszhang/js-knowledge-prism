@@ -1,6 +1,0 @@
-{
-  "name": "prism-template-author",
-  "version": "1.0.0",
-  "description": "Template authoring skill for JS Knowledge Prism — scaffold and guide output template creation",
-  "type": "module"
-}

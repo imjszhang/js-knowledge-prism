@@ -1,7 +1,7 @@
 ---
 name: js-knowledge-prism
 description: Pyramid-principle knowledge distillation — extract atoms, form groups, synthesize insights from journal notes.
-version: 1.7.0
+version: 1.8.0
 metadata:
   openclaw:
     emoji: "\U0001F48E"
@@ -309,7 +309,8 @@ js-knowledge-prism/
 │       ├── prism-processor/
 │       │   └── SKILL.md               ← Cron auto-processing skill definition
 │       ├── prism-template-author/
-│       │   └── SKILL.md               ← Output template creation guide (persona + style + type + prompt)
+│       │   ├── SKILL.md               ← Output template creation guide (persona + style + type + prompt)
+│       │   └── schema-reference.md    ← Complete frontmatter fields, variables, and section specs
 │       └── prism-rewrite-author/
 │           └── SKILL.md               ← Rewrite template creation guide
 ├── lib/
@@ -452,15 +453,17 @@ This skill only communicates with **user-configured** LLM API endpoints. It does
 
 ## Extension Skills
 
-Knowledge Prism supports extension skills that add specialized output capabilities:
+Knowledge Prism includes bundled skills and supports installable extensions:
 
-| Skill | Description |
-|-------|-------------|
-| **prism-output-blog** | Transform perspectives into blog-ready articles |
-| **prism-template-author** | Guide creation of new output templates (scaffold + decision flow) |
-| **prism-rewrite-author** | Guide creation of new rewrite definitions (scaffold + import tools) |
+| Skill | Bundled | Description |
+|-------|---------|-------------|
+| **prism-template-author** | Yes | Guide creation of output templates — persona, style, type, and prompt (four-layer scaffold + decision flow) |
+| **prism-rewrite-author** | Yes | Guide creation of rewrite definitions (scaffold + style extraction from reference articles) |
+| **prism-output-blog** | Extension | Transform perspectives into blog-ready articles |
 
-Use `knowledge_prism_discover_skills` to list available extensions, or `knowledge_prism_install_skill` to install them.
+Bundled skills are in `openclaw-plugin/skills/`. Use `knowledge_prism_discover_skills` to list additional extensions, or `knowledge_prism_install_skill` to install them.
+
+> **Design principle**: The tool ships scaffolds and creation skills, not content-specific templates. All templates, types, components, and rewrite definitions are created by skills and stored in the knowledge base's `outputs/_templates/` directory.
 
 ## Links
 
