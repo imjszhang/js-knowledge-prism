@@ -124,6 +124,21 @@ describe("parseAbbrevTable", () => {
     const { fileToAbbrev } = parseAbbrevTable("no table here");
     assert.equal(fileToAbbrev.size, 0);
   });
+
+  it("ignores table rows inside code fences", () => {
+    const content = [
+      "| AB | note1 |",
+      "```markdown",
+      "| CD | note2 |",
+      "```",
+      "| EF | note3 |",
+    ].join("\n");
+    const { fileToAbbrev, usedAbbrevs } = parseAbbrevTable(content);
+    assert.equal(fileToAbbrev.size, 2);
+    assert.ok(usedAbbrevs.has("AB"));
+    assert.ok(!usedAbbrevs.has("CD"));
+    assert.ok(usedAbbrevs.has("EF"));
+  });
 });
 
 describe("stripCodeFences", () => {
