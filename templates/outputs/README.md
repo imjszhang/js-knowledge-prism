@@ -45,39 +45,41 @@ flowchart LR
 outputs/
   README.md           # 本文件
   INDEX.md.tpl        # 产出索引模板
-  _templates/         # 知识库自定义模板（优先于内置）
-    components/       #   自定义组件
-    types/            #   自定义类型
-    rewrites/         #   自定义改写定义
-  components/         # 内置 Prompt 组件
+  _templates/         # 知识库自定义模板区（init 时复制到知识库）
+    components/       #   自定义组件占位
+    types/            #   自定义类型占位
+    rewrites/         #   自定义改写定义占位
+  components/         # 通用基础组件（非内容特定）
     constraints.md    #   全局硬性约束
-    persona/          #   人设组件
-      blogger.md
-    style/            #   风格组件
-      narrative.md
     review/           #   审校组件
       base.md
-  types/              # 内置类型定义
-    diary.md          #   日记类型
-    blog.md           #   博客类型
-  prompts/            # 内置 Prompt 模板
-    practice-diary.md #   实践日记模板
-  rewrites/           # 内置改写定义
-    kzk-wechat.md     #   微信公众号卡兹克风格
+    persona/          #   人设脚手架
+      _scaffold.md
+    style/            #   风格脚手架
+      _scaffold.md
+  types/              # 类型脚手架
+    _scaffold.md
+  prompts/            # 模板脚手架
+    _scaffold.md
+  rewrites/           # 改写脚手架
+    _scaffold.md
 ```
+
+> 具体的人设、风格、类型、模板和改写定义由技能引导创建，保存到知识库的 `outputs/_templates/` 目录下。
+> 参见 `prism-template-author` 和 `prism-rewrite-author` 技能。
 
 ## 模板查找优先级
 
 引擎加载模板、组件和类型时按以下顺序查找，找到即停：
 
-| 资源 | 1. 知识库自定义（优先） | 2. 内置（回退） |
-| ---- | ---- | ---- |
-| 模板 | `outputs/_templates/*.md` | `outputs/prompts/` |
-| 组件 | `outputs/_templates/components/` | `outputs/components/` |
-| 类型 | `outputs/_templates/types/` | `outputs/types/` |
-| 改写 | `outputs/_templates/rewrites/` | `outputs/rewrites/` |
+| 资源 | 查找路径 |
+| ---- | ---- |
+| 模板 | `{baseDir}/outputs/_templates/*.md` |
+| 组件 | `{baseDir}/outputs/_templates/components/` → 工具内置 `components/`（constraints.md, review/base.md） |
+| 类型 | `{baseDir}/outputs/_templates/types/` |
+| 改写 | `{baseDir}/outputs/_templates/rewrites/` |
 
-与内置同名的文件会覆盖内置版本。通过 `prism_scaffold_template` / `prism_scaffold_component` / `prism_scaffold_rewrite` 创建的自定义资源默认写入 `_templates/`。
+知识库的 `_templates/` 优先。工具仅内置通用基础组件（`constraints.md`、`review/base.md`），所有内容特定的模板、人设、风格、类型和改写定义均由技能引导创建并保存在知识库中。
 
 ## 核心概念
 

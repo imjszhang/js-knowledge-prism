@@ -308,6 +308,8 @@ js-knowledge-prism/
 │   └── skills/
 │       ├── prism-processor/
 │       │   └── SKILL.md               ← Cron auto-processing skill definition
+│       ├── prism-template-author/
+│       │   └── SKILL.md               ← Output template creation guide (persona + style + type + prompt)
 │       └── prism-rewrite-author/
 │           └── SKILL.md               ← Rewrite template creation guide
 ├── lib/
@@ -326,8 +328,14 @@ js-knowledge-prism/
     ├── graph.html                     ← 3D knowledge graph template
     ├── graph-hub.html                 ← Web UI hub page for multi-base graph overview
     └── outputs/
-        └── rewrites/
-            └── _scaffold.md           ← Rewrite template scaffold (used by prism-rewrite-author skill)
+        ├── components/
+        │   ├── constraints.md         ← Global quality constraints (kept as generic infrastructure)
+        │   ├── review/base.md         ← Base review criteria (kept as generic infrastructure)
+        │   ├── persona/_scaffold.md   ← Persona component scaffold
+        │   └── style/_scaffold.md     ← Style component scaffold
+        ├── types/_scaffold.md         ← Type definition scaffold
+        ├── prompts/_scaffold.md       ← Prompt template scaffold
+        └── rewrites/_scaffold.md      ← Rewrite template scaffold
 ```
 
 > `openclaw-plugin/index.mjs` imports from `../lib/` via relative paths, so the directory layout must be preserved.
