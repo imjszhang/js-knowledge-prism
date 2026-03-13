@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - 移除 `templates/outputs/prompts/practice-diary.md`
   - 移除 `templates/outputs/rewrites/kzk-wechat.md`（迁移到知识库 `outputs/_templates/rewrites/`）
   - 上述文件替换为 `_scaffold.md` 脚手架，供技能引导填充
+- **移除独立扩展技能体系**：
+  - 移除 `skills/prism-output-blog/`（预打包博客生成扩展，用户可通过 `prism-template-author` 自建博客模板）
+  - 移除 `skills/prism-template-author/` 和 `skills/prism-rewrite-author/` 的独立扩展版本（含 AI 工具 `prism_scaffold_template` 等），功能由内置技能 SKILL.md 引导取代
+  - `prism-template-author` 和 `prism-rewrite-author` 从可安装扩展变为 `openclaw-plugin/skills/` 内置技能
+  - `schema-reference.md` 迁移到 `openclaw-plugin/skills/prism-template-author/`
 - `listTemplates`、`listTypes`、`listRewrites` 自动过滤 `_` 开头的脚手架文件
 - `templates/outputs/README.md` 更新目录结构和模板查找说明，反映"脚手架 + 技能"架构
 - SKILL.md Extension Skills 章节区分"内置"和"扩展"技能

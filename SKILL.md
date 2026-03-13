@@ -329,9 +329,11 @@ js-knowledge-prism/
     ├── graph.html                     ← 3D knowledge graph template
     ├── graph-hub.html                 ← Web UI hub page for multi-base graph overview
     └── outputs/
+        ├── README.md                  ← Output architecture documentation
+        ├── INDEX.md.tpl               ← Output index page template
         ├── components/
-        │   ├── constraints.md         ← Global quality constraints (kept as generic infrastructure)
-        │   ├── review/base.md         ← Base review criteria (kept as generic infrastructure)
+        │   ├── constraints.md         ← Global quality constraints (generic infrastructure)
+        │   ├── review/base.md         ← Base review criteria (generic infrastructure)
         │   ├── persona/_scaffold.md   ← Persona component scaffold
         │   └── style/_scaffold.md     ← Style component scaffold
         ├── types/_scaffold.md         ← Type definition scaffold
@@ -453,15 +455,15 @@ This skill only communicates with **user-configured** LLM API endpoints. It does
 
 ## Extension Skills
 
-Knowledge Prism includes bundled skills and supports installable extensions:
+Knowledge Prism includes bundled skills in `openclaw-plugin/skills/`:
 
-| Skill | Bundled | Description |
-|-------|---------|-------------|
-| **prism-template-author** | Yes | Guide creation of output templates — persona, style, type, and prompt (four-layer scaffold + decision flow) |
-| **prism-rewrite-author** | Yes | Guide creation of rewrite definitions (scaffold + style extraction from reference articles) |
-| **prism-output-blog** | Extension | Transform perspectives into blog-ready articles |
+| Skill | Description |
+|-------|-------------|
+| **prism-template-author** | Guide creation of output templates — persona, style, type, and prompt (four-layer scaffold + decision flow) |
+| **prism-rewrite-author** | Guide creation of rewrite definitions (scaffold + style extraction from reference articles) |
+| **prism-processor** | Cron auto-processing: batch pipeline + output generation with crash recovery |
 
-Bundled skills are in `openclaw-plugin/skills/`. Use `knowledge_prism_discover_skills` to list additional extensions, or `knowledge_prism_install_skill` to install them.
+All skills are bundled in `openclaw-plugin/skills/`.
 
 > **Design principle**: The tool ships scaffolds and creation skills, not content-specific templates. All templates, types, components, and rewrite definitions are created by skills and stored in the knowledge base's `outputs/_templates/` directory.
 

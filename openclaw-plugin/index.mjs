@@ -525,7 +525,7 @@ export default function register(api) {
         .command("output")
         .description("从视角生成面向读者的产出（日记、博客等）")
         .option("--perspective <dir>", "视角目录名（逗号分隔多个，如 P01,P02）")
-        .option("--template <name>", "输出模板名（如 practice-diary, blog）")
+        .option("--template <name>", "输出模板名（用 --list-templates 查看可用模板）")
         .option("--output-dir <dir>", "输出目录（默认 outputs/<template>）")
         .option("--kl <ids>", "只处理指定 KL（逗号分隔）")
         .option("--source <type>", "素材来源类型（analysis）")
@@ -1333,7 +1333,7 @@ export default function register(api) {
           },
           perspectiveDir: {
             type: "string",
-            description: "视角目录名，如 P23-practice-diary。多视角模式下传主视角，并用 perspectives 指定全部。",
+            description: "视角目录名（如 P25-yangxia-series）。多视角模式下传主视角，并用 perspectives 指定全部。",
           },
           perspectives: {
             type: "array",
@@ -1350,7 +1350,7 @@ export default function register(api) {
           },
           template: {
             type: "string",
-            description: "输出模板名，如 practice-diary, blog",
+            description: "输出模板名（用 knowledge_prism_list_templates 查看可用模板）",
           },
           mode: {
             type: "string",
@@ -2117,11 +2117,11 @@ export default function register(api) {
           },
           perspectiveDir: {
             type: "string",
-            description: "视角目录名，如 P01-practice-diary",
+            description: "视角目录名（如 P25-yangxia-series）",
           },
           template: {
             type: "string",
-            description: "输出模板名，如 practice-diary, blog",
+            description: "输出模板名（用 knowledge_prism_list_templates 查看可用模板）",
           },
           enabled: {
             type: "boolean",
@@ -3135,7 +3135,7 @@ export default function register(api) {
         properties: {
           skillId: {
             type: "string",
-            description: "要安装的技能 ID（如 'prism-output-blog'）",
+            description: "要安装的技能 ID",
           },
           force: {
             type: "boolean",

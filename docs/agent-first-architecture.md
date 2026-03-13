@@ -60,10 +60,10 @@ project-root/
 │       ├── builder.js         ← 多目标构建
 │       └── git.js             ← commit/push/release 自动化
 │
-├── skills/                    ← Layer 5: 扩展技能层
-│   └── <skill-name>/
-│       ├── SKILL.md           ← 技能元数据 (YAML frontmatter)
-│       └── openclaw-plugin/   ← 子技能插件
+├── openclaw-plugin/skills/    ← Layer 5: 内置技能层
+│   ├── prism-processor/       ← 定时自动处理
+│   ├── prism-template-author/ ← 模板创作引导
+│   └── prism-rewrite-author/  ← 改写创作引导
 │
 ├── templates/                 ← 初始化模板
 ├── test/                      ← 测试
@@ -471,6 +471,6 @@ release             →  创建 GitHub Release + 上传 assets
 | **业务核心** | `lib/` / `server/` / `clients/` | 所有消费者 | 可独立运行的业务逻辑 |
 | **人类 CLI** | `bin/` | 人类用户 | 命令行交互入口 |
 | **开发工具链** | `cli/` | 开发者 | build / bump / commit / sync / release |
-| **扩展技能** | `skills/` | Agent + 用户 | 可插拔的子技能生态 |
+| **内置技能** | `openclaw-plugin/skills/` | Agent + 用户 | 内置技能（模板创作引导、改写创作引导、自动处理器） |
 
 一句话：**核心逻辑写一次，Agent 和人类各取所需，构建发布全自动化，生态通过技能注册表自生长。**

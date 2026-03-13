@@ -185,8 +185,8 @@ openclaw prism setup-output-cron
   "items": [
     {
       "baseDir": "d:/github/fork/openclaw/docs/prism",
-      "perspectiveDir": "P23-practice-diary",
-      "template": "practice-diary",
+      "perspectiveDir": "P25-yangxia-series",
+      "template": "yangxia-series",
       "kls": [
         {"klId": "KL19", "status": "pending", "retries": 0},
         {"klId": "KL18", "status": "done", "retries": 0, "processedAt": "..."}

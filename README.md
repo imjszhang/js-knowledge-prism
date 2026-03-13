@@ -306,13 +306,13 @@ await runRewrite({
 
 ## 技能
 
-内置技能（`openclaw-plugin/skills/`）和可安装扩展技能：
+内置技能（`openclaw-plugin/skills/`）：
 
-| 技能 | 内置 | 说明 |
-|------|------|------|
-| `prism-template-author` | 是 | 引导创建产出模板（人设→风格→类型→模板四层脚手架 + 决策引导） |
-| `prism-rewrite-author` | 是 | 引导创建改写定义（脚手架 + 从参考文章提炼风格） |
-| `prism-output-blog` | 扩展 | 将视角转化为博客文章 |
+| 技能 | 说明 |
+|------|------|
+| `prism-template-author` | 引导创建产出模板（人设→风格→类型→模板四层脚手架 + 决策引导） |
+| `prism-rewrite-author` | 引导创建改写定义（脚手架 + 从参考文章提炼风格） |
+| `prism-processor` | 定时自动处理：批量 pipeline + 产出生成（崩溃恢复 + 失败重试） |
 
 > 工具不内置任何内容特定的模板。所有模板、类型、组件和改写定义由技能引导创建，保存在知识库的 `outputs/_templates/` 目录下。
 

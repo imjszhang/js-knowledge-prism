@@ -32,8 +32,8 @@ js-knowledge-prism v${pkg.version}
   npx js-knowledge-prism process --dry-run
   npx js-knowledge-prism status
   npx js-knowledge-prism new-perspective blog-post
-  npx js-knowledge-prism output --perspective P01-xxx --template blog
-  npx js-knowledge-prism rewrite --style kzk-wechat --dir outputs/practice-diary/P23/
+  npx js-knowledge-prism output --perspective P25-xxx --template my-template
+  npx js-knowledge-prism rewrite --style my-style --dir outputs/my-template/P25/
 `.trim();
 
 const args = process.argv.slice(2);

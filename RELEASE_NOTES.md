@@ -6,7 +6,8 @@
 
 - **模板架构重构**：移除所有内置内容模板（persona/blogger、style/narrative、types/diary、types/blog、prompts/practice-diary、rewrites/kzk-wechat），替换为 `_scaffold.md` 脚手架文件
 - **设计原则**：工具提供"怎么造模板"的能力，知识库存放"具体的模板"。所有模板、类型、组件和改写定义保存在知识库的 `outputs/_templates/` 目录下
-- **内置创作技能**：
+- **移除独立扩展技能体系**：删除 `skills/prism-output-blog/`（预打包博客扩展）以及 `prism-template-author` / `prism-rewrite-author` 的独立扩展版本（含 `prism_scaffold_template` 等 AI 工具），功能由内置技能 SKILL.md 引导取代
+- **内置创作技能**（`openclaw-plugin/skills/`）：
   - `prism-template-author`：引导创建 output 模板——人设→风格→类型→模板四层体系，含需求采集、风格提炼（支持从参考文章分析）、脚手架填充、质量检查
   - `prism-rewrite-author`：引导创建改写定义——风格采集、规则提炼、脚手架填充
 - **保留通用基础设施**：`constraints.md`（全局硬性约束）和 `review/base.md`（通用审校标准）作为任何模板都需要的基础组件保留在工具中
