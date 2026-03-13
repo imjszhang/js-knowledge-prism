@@ -306,8 +306,10 @@ js-knowledge-prism/
 │   ├── output-batch-*.json            ← (runtime) active batch for crash recovery
 │   ├── output-archive/                ← (runtime) completed batch archive
 │   └── skills/
-│       └── prism-processor/
-│           └── SKILL.md               ← Cron auto-processing skill definition
+│       ├── prism-processor/
+│       │   └── SKILL.md               ← Cron auto-processing skill definition
+│       └── prism-rewrite-author/
+│           └── SKILL.md               ← Rewrite template creation guide
 ├── lib/
 │   ├── config.mjs                     ← Configuration loading
 │   ├── process.mjs                    ← Core pipeline (atoms → groups → synthesis)
@@ -324,7 +326,8 @@ js-knowledge-prism/
     ├── graph.html                     ← 3D knowledge graph template
     ├── graph-hub.html                 ← Web UI hub page for multi-base graph overview
     └── outputs/
-        └── rewrites/                  ← Built-in rewrite definitions (kzk-wechat, etc.)
+        └── rewrites/
+            └── _scaffold.md           ← Rewrite template scaffold (used by prism-rewrite-author skill)
 ```
 
 > `openclaw-plugin/index.mjs` imports from `../lib/` via relative paths, so the directory layout must be preserved.
