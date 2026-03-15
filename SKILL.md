@@ -25,8 +25,51 @@ Before performing any operation, detect whether this project is running as an **
 
 ### Detection Steps
 
+#### Step 0 — OS & Environment Variable Probe
+
+First detect the current operating system to choose the correct shell commands, then check OpenClaw-related environment variables:
+
+**OS Detection:**
+
+| Check | Windows | macOS / Linux |
+|-------|---------|---------------|
+| OS identification | `echo %OS%` or `$env:OS` (PowerShell) | `uname -s` |
+| Home directory | `%USERPROFILE%` | `$HOME` |
+| Default OpenClaw state dir | `%USERPROFILE%\.openclaw\` | `~/.openclaw/` |
+| Default config path | `%USERPROFILE%\.openclaw\openclaw.json` | `~/.openclaw/openclaw.json` |
+
+**Environment Variable Check:**
+
+```bash
+# Windows (PowerShell)
+Get-ChildItem Env: | Where-Object { $_.Name -match '^OPENCLAW_' }
+
+# Windows (CMD / Git Bash)
+set | grep -iE "^OPENCLAW_"
+
+# macOS / Linux
+env | grep -iE "^OPENCLAW_"
+```
+
+| Variable | Meaning if set |
+|----------|---------------|
+| `OPENCLAW_CONFIG_PATH` | Direct path to config file (e.g. `D:\.openclaw\openclaw.json`) — **highest priority**, use as-is |
+| `OPENCLAW_STATE_DIR` | OpenClaw state directory (e.g. `D:\.openclaw`) — config file at `$OPENCLAW_STATE_DIR/openclaw.json` |
+| `OPENCLAW_HOME` | Custom home directory (e.g. `D:\`) — state dir resolves to `$OPENCLAW_HOME/.openclaw/` |
+
+**OpenClaw config file resolution order** (first match wins):
+
+1. `OPENCLAW_CONFIG_PATH` is set → use that file directly
+2. `OPENCLAW_STATE_DIR` is set → `$OPENCLAW_STATE_DIR/openclaw.json`
+3. `OPENCLAW_HOME` is set → `$OPENCLAW_HOME/.openclaw/openclaw.json`
+4. None set → default `~/.openclaw/openclaw.json` (Windows: `%USERPROFILE%\.openclaw\openclaw.json`)
+
+Use the resolved config path in all subsequent steps.
+
+#### Step 1 — OpenClaw Binary Detection
+
 1. Check if `openclaw` command exists on PATH (Windows: `where openclaw`, macOS/Linux: `which openclaw`)
-2. If exists, read `~/.openclaw/openclaw.json` and look for `js-knowledge-prism` in `plugins.entries` with `enabled: true`
+2. If exists, read the OpenClaw config file (path resolved by Step 0) and look for `js-knowledge-prism` in `plugins.entries` with `enabled: true`
 3. Verify that `plugins.load.paths` contains a path pointing to this project's `openclaw-plugin/` directory
 
 If **all three checks pass** → use **OpenClaw Plugin Mode**. Otherwise → use **Standalone CLI Mode**.
@@ -71,6 +114,8 @@ When running without OpenClaw:
 
 After detecting the runtime mode, run the following diagnostic steps to build a complete picture of the local deployment. Execute these in order; skip remaining steps if an earlier step indicates OpenClaw is unavailable.
 
+> **Prerequisite**: Step 0 (OS & Environment Variable Probe) from the Detection Steps above must have already been executed. Use the detected OS to choose correct commands, and use the resolved config path from Step 0.
+
 ### Step 1 — OpenClaw Availability
 
 - Windows: `where openclaw` / macOS & Linux: `which openclaw`
@@ -78,7 +123,7 @@ After detecting the runtime mode, run the following diagnostic steps to build a 
 
 ### Step 2 — Plugin Load Status
 
-Read `~/.openclaw/openclaw.json` and check:
+Read the OpenClaw config file (path resolved by Step 0) and check:
 
 - `plugins.load.paths` — does it include a path pointing to this project's `openclaw-plugin/` directory?
 - `plugins.entries["js-knowledge-prism"].enabled` — is the plugin enabled?
