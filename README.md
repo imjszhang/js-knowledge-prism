@@ -111,6 +111,10 @@ npx js-knowledge-prism graph --open             # 生成后自动打开浏览器
 npx js-knowledge-prism new-perspective tutorial --name "入门教程"
 ```
 
+### 系列规约文档（`_convention.md`）
+
+多篇系列的产出目录下可放置 `_convention.md` 规约文档。引擎生成时自动检测并注入 System Prompt，无需修改模板。规约包含系列身份、作者事实、核心实体定义、已确立数据、前文提要、系列惯例和硬性禁止，确保跨篇一致性。详见 [templates/outputs/README.md](templates/outputs/README.md#系列规约文档_conventionmd)。
+
 ### `rewrite`
 
 对已有产出文件执行风格改写。改写结果写入 `_rewrites/<style>/` 子目录，不覆盖原文。

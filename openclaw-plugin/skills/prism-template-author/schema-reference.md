@@ -98,6 +98,12 @@ type 指定后，类型文件中的 `split`、`fileNaming` 作为默认值，模
 | `group_links` | 当前 group 的 Markdown 链接 |
 | `rel_to_base` | 输出目录到知识库根的相对路径 |
 
+### 通用变量（所有 split 策略均可用）
+
+| 变量 | 说明 |
+|------|------|
+| `convention_content` | 系列规约文档 `_convention.md` 的完整内容（无规约时为空字符串）。引擎在 outputDir 及其父目录自动查找。若模板未显式引用此变量，引擎自动将规约追加到 System Prompt 末尾 |
+
 ### Pipeline 专用变量
 
 | 变量 | 说明 |

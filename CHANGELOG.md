@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.9.0] - 2026-03-20
+
+### Added
+
+- **系列规约文档 `_convention.md` 自动加载**：产出引擎在 `outputDir` 及其父目录自动检测 `_convention.md`，找到后注入 System Prompt 末尾作为强制上下文，确保多篇系列跨篇一致性（实体名称、数据、时间线、前文提要等）
+  - 新增 `loadConvention(outputDir)` 函数，查找路径：`outputDir/_convention.md` → `dirname(outputDir)/_convention.md`
+  - 自动注入逻辑：若模板未显式引用 `{{convention_content}}`，引擎自动追加到 System Prompt；若模板已引用则由模板控制位置
+  - 新增 `{{convention_content}}` 模板变量，所有 split 策略（per-kl、per-perspective、per-group、cross-perspective、from-analysis）均可用
+  - 生成日志输出规约文件路径和字符数
+  - 标准章节推荐：系列身份、作者事实、核心实体定义、已确立数据、前文提要、系列惯例、硬性禁止
+
+### Changed
+
+- `templates/outputs/README.md` 新增"系列规约文档"章节，文档化查找路径、工作机制、标准章节和维护流程
+- `schema-reference.md` 新增"通用变量"章节，记录 `convention_content` 变量
+- `README.md` 新增规约文档功能说明
+- 新建产出流程增加第 4 步（创建 `_convention.md`）和第 11 步（更新前文提要）
+
 ## [1.8.0] - 2026-03-13
 
 ### Changed

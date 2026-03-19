@@ -141,17 +141,53 @@ Frontmatter 字段：`name`、`description`、`platform`（wechat/zhihu/twitter/
 | 多视角交叉 | `--perspective P01,P02` 或 frontmatter `source.type: cross-perspective` |
 | 直接从 analysis | `--source analysis --groups G01,G02` |
 
+## 系列规约文档（`_convention.md`）
+
+多篇系列的产出目录下可放置 `_convention.md` 作为该系列的**强制上下文规约**。引擎在生成时自动检测并加载，无需修改模板。
+
+### 工作机制
+
+1. 引擎在 `outputDir` 和其父目录（模板级）查找 `_convention.md`
+2. 找到后自动注入 System Prompt 末尾（作为 `## 系列规约（强制上下文）`）
+3. 同时设置 `{{convention_content}}` 变量，模板可显式引用
+4. 若模板已显式引用 `{{convention_content}}`，不重复自动注入
+
+### 查找路径
+
+| 优先级 | 路径 | 场景 |
+| ------ | ---- | ---- |
+| 1 | `outputs/<template>/<perspective>/_convention.md` | per-perspective 规约 |
+| 2 | `outputs/<template>/_convention.md` | 跨 perspective 的系列级规约 |
+
+### 标准章节
+
+| 章节 | 内容 |
+| ---- | ---- |
+| §1 系列身份 | 系列名、视角 ID、发布渠道、目标读者、人称、语言 |
+| §2 作者事实 | 笔名、GitHub、部署方式、时间线等不可更改的事实 |
+| §3 核心实体定义 | 所有专有名词、角色、工具的名称与定义对照表 |
+| §4 已确立的关键数据 | 已在发布篇目中引用过的数字，后续必须一致 |
+| §5 前文提要 | 按篇序列出每篇核心内容摘要 |
+| §6 系列惯例 | 篇头篇尾格式、比喻体系、图片占位、衔接方式 |
+| §7 硬性禁止 | 不可违反的红线（禁止编造数据、矛盾已发布内容等） |
+
+### 维护
+
+每完成一篇新文章后，在 §5（前文提要）追加该篇摘要，确保后续篇目的叙事连贯性。
+
 ## 新建产出流程
 
 1. 确认素材就绪（视角已完成 scqa + tree，或 analysis groups 已充实）
 2. 选择或创建类型定义（`types/`）
 3. 创建 Prompt 模板（`prompts/`），引用组件和类型
-4. 生成骨架：`output --skeleton --perspective ... --template ...`
-5. 人工审查骨架
-6. 生成产出：`output --perspective ... --template ...`
-7. 可选审校：`output --perspective ... --template ... --review`
-8. 可选改写：`rewrite --style kzk-wechat --dir outputs/<template>/<perspective>/`
-9. 更新 [INDEX.md](INDEX.md) 的产出总览表
+4. 若为多篇系列，创建 `_convention.md` 规约文档（参考上方标准章节）
+5. 生成骨架：`output --skeleton --perspective ... --template ...`
+6. 人工审查骨架
+7. 生成产出：`output --perspective ... --template ...`
+8. 可选审校：`output --perspective ... --template ... --review`
+9. 可选改写：`rewrite --style kzk-wechat --dir outputs/<template>/<perspective>/`
+10. 更新 [INDEX.md](INDEX.md) 的产出总览表
+11. 更新 `_convention.md` 的 §5 前文提要
 
 ## CLI 参考
 
