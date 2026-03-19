@@ -122,4 +122,17 @@ describe("replaceAbbrevInOutput", () => {
     assert.ok(result.includes("> 缩写：ZZ"));
     assert.ok(result.includes("ZZ-01"));
   });
+
+  it("replaces 3-segment corpus atom IDs (XX-NNNN-NN)", () => {
+    const input = [
+      "> 缩写：SK",
+      "| SK-0010-01 | 事实 | something |",
+      "| SK-0010-02 | 判断 | another |",
+    ].join("\n");
+    const result = replaceAbbrevInOutput(input, "SK", "ZB");
+    assert.ok(result.includes("> 缩写：ZB"));
+    assert.ok(result.includes("ZB-0010-01"));
+    assert.ok(result.includes("ZB-0010-02"));
+    assert.ok(!result.includes("SK-0010-01"));
+  });
 });

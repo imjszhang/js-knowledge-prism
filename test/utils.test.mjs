@@ -8,6 +8,8 @@ import {
   makePaths,
   listDateDirs,
   listMdFiles,
+  listSeriesDirs,
+  listCorpusFiles,
   extractTitle,
   isPlaceholder,
   parseAbbrevTable,
@@ -19,14 +21,15 @@ function makeTmpDir() {
 }
 
 describe("makePaths", () => {
-  it("returns all expected path keys", () => {
+  it("returns all expected path keys including corpusDir", () => {
     const p = makePaths("/fake/base");
-    assert.equal(p.journalDir, "/fake/base/journal");
-    assert.equal(p.atomsDir, "/fake/base/pyramid/analysis/atoms");
-    assert.equal(p.groupsDir, "/fake/base/pyramid/analysis/groups");
-    assert.equal(p.synthesisPath, "/fake/base/pyramid/analysis/synthesis.md");
-    assert.equal(p.structureDir, "/fake/base/pyramid/structure");
-    assert.equal(p.outputsDir, "/fake/base/outputs");
+    assert.ok(p.journalDir.endsWith(join("fake", "base", "journal")));
+    assert.ok(p.corpusDir.endsWith(join("fake", "base", "corpus")));
+    assert.ok(p.atomsDir.endsWith(join("fake", "base", "pyramid", "analysis", "atoms")));
+    assert.ok(p.groupsDir.endsWith(join("fake", "base", "pyramid", "analysis", "groups")));
+    assert.ok(p.synthesisPath.endsWith(join("fake", "base", "pyramid", "analysis", "synthesis.md")));
+    assert.ok(p.structureDir.endsWith(join("fake", "base", "pyramid", "structure")));
+    assert.ok(p.outputsDir.endsWith(join("fake", "base", "outputs")));
   });
 });
 
@@ -154,5 +157,46 @@ describe("stripCodeFences", () => {
 
   it("returns text unchanged if no fences", () => {
     assert.equal(stripCodeFences("plain text"), "plain text");
+  });
+});
+
+describe("listSeriesDirs", () => {
+  it("returns empty for non-existent dir", () => {
+    assert.deepEqual(listSeriesDirs("/nonexistent"), []);
+  });
+
+  it("lists series directories, excluding _ prefixed", () => {
+    const tmp = makeTmpDir();
+    try {
+      mkdirSync(join(tmp, "seriesA"));
+      mkdirSync(join(tmp, "seriesB"));
+      mkdirSync(join(tmp, "_internal"));
+      writeFileSync(join(tmp, "file.md"), "not a dir");
+      const result = listSeriesDirs(tmp);
+      assert.deepEqual(result, ["seriesA", "seriesB"]);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("listCorpusFiles", () => {
+  it("returns empty for non-existent dir", () => {
+    assert.deepEqual(listCorpusFiles("/nonexistent"), []);
+  });
+
+  it("lists .md files excluding _series.md and README.md", () => {
+    const tmp = makeTmpDir();
+    try {
+      writeFileSync(join(tmp, "0001-article.md"), "# A");
+      writeFileSync(join(tmp, "0002-article.md"), "# B");
+      writeFileSync(join(tmp, "_series.md"), "# Series");
+      writeFileSync(join(tmp, "README.md"), "# README");
+      writeFileSync(join(tmp, "data.txt"), "text");
+      const result = listCorpusFiles(tmp);
+      assert.deepEqual(result, ["0001-article.md", "0002-article.md"]);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
