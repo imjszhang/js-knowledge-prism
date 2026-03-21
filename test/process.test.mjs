@@ -1,11 +1,16 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
 import {
   createHttpCaller,
   generateAbbrevCandidates,
   resolveAbbrevConflict,
   replaceAbbrevInOutput,
+  condensedGroupSummary,
 } from "../lib/process.mjs";
 
 describe("createHttpCaller", () => {
@@ -134,5 +139,65 @@ describe("replaceAbbrevInOutput", () => {
     assert.ok(result.includes("ZB-0010-01"));
     assert.ok(result.includes("ZB-0010-02"));
     assert.ok(!result.includes("SK-0010-01"));
+  });
+});
+
+describe("condensedGroupSummary", () => {
+  const tmpBase = join(tmpdir(), `kp-test-group-${Date.now()}`);
+
+  it("extracts group ID, thesis, and atom IDs from a standard group file", () => {
+    mkdirSync(tmpBase, { recursive: true });
+    const groupPath = join(tmpBase, "G07-test.md");
+    writeFileSync(groupPath, [
+      "# G07: 生存是唯一的绝对公理",
+      "",
+      "> 一句有态度的判断句。",
+      "",
+      "## 包含的 Atoms",
+      "",
+      "| 编号 | 来源 | 内容摘要 |",
+      "| --- | --- | --- |",
+      "| DJ-0001-01 | 道典正义 | 前言的前言 |",
+      "| DJ-0010-01 | 道典正义 | 前言 |",
+      "| DJ-0020-03 | 道典正义 | 第一块砖 |",
+    ].join("\n"), "utf-8");
+
+    const result = condensedGroupSummary(groupPath);
+    assert.ok(result.startsWith("**G07**"));
+    assert.ok(result.includes("生存是唯一的绝对公理"));
+    assert.ok(result.includes("DJ-0001-01"));
+    assert.ok(result.includes("DJ-0010-01"));
+    assert.ok(result.includes("DJ-0020-03"));
+    rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  it("falls back to extractTitle when title line has no colon format", () => {
+    mkdirSync(tmpBase, { recursive: true });
+    const groupPath = join(tmpBase, "G12-fallback.md");
+    writeFileSync(groupPath, [
+      "# 一个没有标准格式的标题",
+      "",
+      "| 编号 | 来源 | 内容 |",
+      "| --- | --- | --- |",
+      "| SF-0100-01 | 水库F | 内容 |",
+    ].join("\n"), "utf-8");
+
+    const result = condensedGroupSummary(groupPath);
+    assert.ok(result.startsWith("**G12**"));
+    assert.ok(result.includes("一个没有标准格式的标题"));
+    assert.ok(result.includes("SF-0100-01"));
+    rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  it("handles group with no atom rows", () => {
+    mkdirSync(tmpBase, { recursive: true });
+    const groupPath = join(tmpBase, "G01-empty.md");
+    writeFileSync(groupPath, "# G01: 空组\n\n无内容。\n", "utf-8");
+
+    const result = condensedGroupSummary(groupPath);
+    assert.ok(result.includes("**G01**"));
+    assert.ok(result.includes("空组"));
+    assert.ok(result.includes("(无)"));
+    rmSync(tmpBase, { recursive: true, force: true });
   });
 });
